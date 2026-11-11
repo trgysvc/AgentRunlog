@@ -9,10 +9,9 @@ import { CodebaseScanner } from '../compiler/scanner.js';
 import { HistoryImporter } from '../compiler/history-importer.js';
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
-import { existsSync, readFileSync, appendFileSync, readdirSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
-import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
+import { existsSync, readFileSync, appendFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const args = process.argv.slice(2);
 const command = args[0] || 'help';
@@ -23,9 +22,11 @@ async function main() {
 AgentRunlog CLI — Typed Engineering Memory for Coding Agents
 
 Usage:
-  runlog install-plugin <plt> Install native plugin bundle (antigravity | claude | cursor | codex)
-  runlog init [platform]      Initialize memory, scan existing codebase, and install project hooks
-  runlog scan                 Scan existing codebase (stack, git log, modules, docs) into memory
+  runlog setup                Install plugins across ALL 4 platforms & run full verification
+  runlog install-plugin [plt] Install plugin (all | antigravity | claude | cursor | codex)
+  runlog doctor               Verify all 4 platform plugins + live MCP JSON-RPC handshake
+  runlog init [platform]      Initialize memory, scan codebase + history, and install project hooks
+  runlog scan [--alias name]  Scan existing codebase + past conversations across all 4 platforms
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
@@ -36,85 +37,63 @@ Usage:
     return;
   }
 
-  if (command === 'install-plugin') {
-    const targetPlatform = (args[1] || 'antigravity').toLowerCase();
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const pkgRoot = resolve(__dirname, '../..');
-    const cliEntry = resolve(pkgRoot, 'dist/cli/index.js');
-    const nodeExec = process.execPath;
+  if (command === 'setup' || command === 'install-plugin') {
+    const target = command === 'setup' ? 'all' : (args[1] || 'all').toLowerCase();
+    const installer = new UniversalPluginInstaller();
 
-    if (targetPlatform === 'antigravity') {
-      const pluginDir = join(homedir(), '.gemini', 'config', 'plugins', 'agentrunlog');
-      const rulesDir = join(pluginDir, 'rules');
-      const skillsDir = join(pluginDir, 'skills', 'agentrunlog');
-      mkdirSync(rulesDir, { recursive: true });
-      mkdirSync(skillsDir, { recursive: true });
-
-      // Copy plugin.json, rules/AGENTS.md, skills/agentrunlog/SKILL.md
-      for (const rel of ['plugin.json', 'rules/AGENTS.md', 'skills/agentrunlog/SKILL.md']) {
-        const srcPath = join(pkgRoot, rel);
-        const destPath = join(pluginDir, rel);
-        if (existsSync(srcPath)) copyFileSync(srcPath, destPath);
-      }
-
-      // Write mcp_config.json with absolute node + cli path for reliable GUI execution
-      writeFileSync(
-        join(pluginDir, 'mcp_config.json'),
-        JSON.stringify(
-          {
-            mcpServers: {
-              agentrunlog: {
-                command: nodeExec,
-                args: [cliEntry, 'mcp'],
-              },
-            },
-          },
-          null,
-          2
-        ),
-        'utf8'
-      );
-
-      // Write hooks.json with absolute node + cli path
-      writeFileSync(
-        join(pluginDir, 'hooks.json'),
-        JSON.stringify(
-          {
-            description: 'AgentRunlog typed engineering memory hooks for Google Antigravity',
-            hooks: {
-              PreInvocation: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity pre-invocation` }],
-              PostInvocation: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity post-invocation` }],
-              PostToolUse: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity post-tool-use` }],
-              Stop: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity stop` }],
-            },
-          },
-          null,
-          2
-        ),
-        'utf8'
-      );
-
-      // Remove standalone agentrunlog entry from ~/.gemini/config/mcp_config.json to avoid global collision
-      const userMcpPath = join(homedir(), '.gemini', 'config', 'mcp_config.json');
-      if (existsSync(userMcpPath)) {
-        try {
-          const userMcp = JSON.parse(readFileSync(userMcpPath, 'utf8'));
-          if (userMcp?.mcpServers?.agentrunlog) {
-            delete userMcp.mcpServers.agentrunlog;
-            writeFileSync(userMcpPath, JSON.stringify(userMcp, null, 2), 'utf8');
-          }
-        } catch {}
-      }
-
-      console.log(`✅ Installed AgentRunlog native Antigravity plugin to:\n   ${pluginDir}`);
-      console.log(`   Includes: plugin.json, mcp_config.json, hooks.json, rules/AGENTS.md, skills/agentrunlog/SKILL.md`);
-      console.log(`\n🚀 Next step: Run "runlog init" in any project directory to initialize .agentrunlog/`);
-    } else if (targetPlatform === 'claude') {
-      console.log(`ℹ️ To install as a Claude Code plugin directly from GitHub:`);
-      console.log(`   claude plugin add https://github.com/trgysvc/AgentRunlog.git`);
-      console.log(`   Or inside any project: runlog init claude`);
+    console.log('🔌 Installing AgentRunlog Plugin Bundle...');
+    let results;
+    if (target === 'all') {
+      results = installer.installAll();
+    } else if (target === 'antigravity') {
+      results = [installer.installAntigravity()];
+    } else if (target === 'claude') {
+      results = [installer.installClaudeCode()];
+    } else if (target === 'cursor') {
+      results = [installer.installCursor()];
+    } else if (target === 'codex') {
+      results = [installer.installCodex()];
     } else {
-      console.log(`ℹ️ Run "runlog init ${targetPlatform}" inside your project directory to configure hooks & rules.`);
+      console.error(`❌ Unknown platform: ${target}. Use: all | antigravity | claude | cursor | codex`);
+      process.exit(1);
+    }
+
+    for (const res of results) {
+      console.log(`✅ ${res.platform.toUpperCase()}: Configured (${res.paths.length} files)`);
+      for (const p of res.paths) {
+        console.log(`   - ${p}`);
+      }
+    }
+
+    if (command === 'setup' || target === 'all') {
+      console.log('\n🩺 Running System Verification (runlog doctor)...');
+      const doctor = new SystemDoctor();
+      const report = await doctor.runAllChecks();
+      for (const chk of report.checks) {
+        console.log(`${chk.ok ? '✅' : '❌'} ${chk.component}: ${chk.details}`);
+      }
+      if (!report.allHealthy) {
+        console.warn('\n⚠️ Some checks failed. Please review the messages above.');
+        process.exit(1);
+      }
+      console.log('\n🎉 All 4 platforms installed and verified! Run "runlog init" inside any project to start.');
+    }
+    return;
+  }
+
+  if (command === 'doctor') {
+    console.log('🩺 Running AgentRunlog Diagnostic & Live Verification...\n');
+    const doctor = new SystemDoctor();
+    const report = await doctor.runAllChecks();
+    for (const chk of report.checks) {
+      console.log(`${chk.ok ? '✅' : '❌'} ${chk.component}: ${chk.details}`);
+    }
+    console.log('');
+    if (report.allHealthy) {
+      console.log('✨ All 4 platforms and live MCP server are healthy and ready!');
+    } else {
+      console.log('⚠️ Some checks failed. Run "runlog setup" to auto-repair.');
+      process.exit(1);
     }
     return;
   }

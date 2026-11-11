@@ -199,6 +199,7 @@ export class LLMCompilerClient {
 
     if (events.length === 0) return bundle;
     const sessionId = events[0].sessionId;
+    const isHistoricalImport = sessionId.startsWith('import_');
     const failureCounts = new Map<string, { count: number; lastError: string; timestamp: string; turnIndex: number }>();
 
     const decisionSignalRegex =
@@ -210,6 +211,8 @@ export class LLMCompilerClient {
       const promptText = String(payload.text || payload.prompt || payload.rawText || '');
 
       // 1. Detect natural-language engineering decisions automatically (cap 5 per session)
+      // NFR-08: Historical heuristic extractions are marked status: 'draft' and confidence: 'low'
+      // so they do NOT pollute push cache until verified.
       if (
         bundle.decisions.length < 5 &&
         e.eventType === 'prompt_submit' &&
@@ -221,8 +224,8 @@ export class LLMCompilerClient {
         bundle.decisions.push({
           id: `DEC-${deterministicShortId(`${sessionId}:dec:${i}`)}`,
           title: cleanSingleLine.slice(0, 65),
-          status: 'active',
-          decidedBy: 'user',
+          status: isHistoricalImport ? 'draft' : 'active',
+          decidedBy: isHistoricalImport ? 'historical-candidate' : 'user',
           author: 'user',
           context: `User directive captured during session ${sessionId}`,
           choice: cleanSingleLine.slice(0, 280),
@@ -234,7 +237,7 @@ export class LLMCompilerClient {
             turnIndex: i + 1,
             timestamp: e.timestamp,
           },
-          confidence: 'medium',
+          confidence: isHistoricalImport ? 'low' : 'medium',
           createdAt: e.timestamp,
           updatedAt: e.timestamp,
         });
@@ -266,7 +269,7 @@ export class LLMCompilerClient {
               turnIndex: i + 1,
               timestamp: e.timestamp,
             },
-            confidence: 'medium',
+            confidence: isHistoricalImport ? 'low' : 'medium',
             createdAt: e.timestamp,
           });
         }
@@ -306,7 +309,7 @@ export class LLMCompilerClient {
             turnIndex: stats.turnIndex,
             timestamp: stats.timestamp,
           },
-          confidence: 'medium',
+          confidence: isHistoricalImport ? 'low' : 'medium',
           createdAt: stats.timestamp,
         });
       }

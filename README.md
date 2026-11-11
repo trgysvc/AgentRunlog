@@ -128,43 +128,23 @@ AgentRunlog makes an intentional architectural distinction between the **Working
 
 ---
 
-## 🚀 Installation & Plugin Setup
+## 🚀 Automated Installation (All 4 Platforms)
 
-AgentRunlog ships as a **Native Plugin Bundle** (containing `plugin.json`, `mcp_config.json`, `hooks.json`, `rules/`, and `skills/`).
+AgentRunlog ships as a **Universal Plugin Bundle** (`plugin.json`, `mcp_config.json`, `hooks.json`, `rules/`, and `skills/`).
 
-### 1. Install CLI & Plugin Bundle Globally from GitHub
+### 1. Install Globally & Auto-Configure All 4 Platforms
 ```bash
 npm install -g git+https://github.com/trgysvc/AgentRunlog.git
+runlog setup
 ```
-*(Or download the release tarball directly from [GitHub Releases](https://github.com/trgysvc/AgentRunlog/releases))*
 
-### 2. Add to Your Coding Platform
+`runlog setup` automatically and non-destructively installs and verifies **all 4 platforms** in one step, then runs a **live MCP handshake check (`runlog doctor`)**:
+- 🟣 **Google Antigravity:** Native plugin (`~/.gemini/config/plugins/agentrunlog/`) with MCP, Hooks, `rules/AGENTS.md`, and `SKILL.md`.
+- 🟠 **Claude Code:** Global MCP (`~/.claude.json`), Hooks (`~/.claude/settings.json`), and Skill (`~/.claude/skills/agentrunlog/`).
+- 🔵 **Cursor IDE & CLI:** Global MCP (`~/.cursor/mcp.json`), Hooks (`~/.cursor/hooks.json`), and Rules (`~/.cursor/rules/agentrunlog.mdc`).
+- 🟢 **OpenAI Codex CLI:** Global MCP & `features.hooks = true` (`~/.codex/config.toml`), Hooks (`~/.codex/hooks.json`), and `AGENTS.md`.
 
-#### 🟣 Google Antigravity (Recommended — Native Plugin)
-Install the full plugin bundle (MCP + Hooks + Rules + Skill) into Antigravity with one command:
-```bash
-runlog install-plugin antigravity
-```
-*(Or clone directly: `git clone https://github.com/trgysvc/AgentRunlog.git ~/.gemini/config/plugins/agentrunlog`)*  
-Then toggle **AgentRunlog Memory** on in Antigravity's **Customizations → Plugins** tab.
-
-#### 🟠 Claude Code
-Inside any project, or as a plugin:
-```bash
-runlog init claude
-```
-And ensure `agentrunlog` is in your MCP config (`.mcp.json` is included in the repo).
-
-#### 🔵 Cursor
-```bash
-runlog init cursor
-```
-Installs `.cursor/hooks.json` and `.cursorrules` (which instructs Cursor to query `search_runlog` and `check_dead_ends` before major refactors). Add `agentrunlog` (`command: "runlog"`, `args: ["mcp"]`) in Cursor Settings → MCP.
-
-#### 🟢 Codex CLI
-```bash
-runlog init codex
-```
+*(Need to install for just one platform? Run `runlog install-plugin <antigravity|claude|cursor|codex>`. To re-verify anytime, run `runlog doctor`.)*
 
 ---
 
@@ -193,8 +173,9 @@ When you open a new chat tomorrow or switch between Claude Code, Antigravity, Cu
 - **Push:** On the first turn, the hook injects active decisions, recent RCAs, and dead ends (< 800 tokens, < 20ms).
 - **Pull:** Before touching risky architecture, the agent automatically checks `check_dead_ends` and `search_runlog` via MCP so past mistakes are never repeated.
 
-### Step 4: Maintenance & CLI Commands
+### Step 4: Maintenance & Verification Commands
 ```bash
+runlog doctor    # Verify all 4 platform plugins + live MCP stdio handshake
 runlog scan [--alias name] # Scan codebase + past conversations across all 4 platforms
 runlog status    # View active/superseded decisions, RCAs, dead ends, and token budget
 runlog compile   # Manually compile raw session transcripts into wiki pages

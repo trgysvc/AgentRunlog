@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "storageDir": ".agentrunlog",
+  "maxPushTokens": 800,
+  "minPushConfidence": "medium",
+  "sanitizer": {
+    "enabled": true,
+    "customPatterns": []
+  },
+  "compiler": {
+    "provider": "local",
+    "model": "fast-default",
+    "uncompiledTurnsThreshold": 25
+  }
+}

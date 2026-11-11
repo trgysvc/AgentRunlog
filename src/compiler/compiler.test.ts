@@ -340,5 +340,24 @@ describe('Compiler & Linter Engine', () => {
     const rawSaved = readFileSync(agPath, 'utf8');
     expect(rawSaved).not.toContain('sk-proj-12345678901234567890123456789012');
     expect(rawSaved).toContain('[REDACTED:OPENAI_API_KEY:');
+
+    // Verify incremental state cache skips unchanged files on 2nd run (Argon Directive 3)
+    const res2 = await importer.importProjectHistory({
+      antigravityBrainDir: mockAgDir,
+      claudeProjectsDir: join(tempDir, 'mock_claude_proj'),
+      codexSessionsDir: join(tempDir, 'mock_codex_sessions'),
+      cursorProjectsDir: join(tempDir, 'mock_cursor_proj'),
+      cursorWorkspaceStorageDir: join(tempDir, 'nonexistent_ws'),
+      aliases: ['SonarAura'],
+    });
+    expect(res2.skippedUnchanged).toBe(4);
+    expect(res2.totalEventsImported).toBe(0);
+
+    // Verify NFR-08 Staged Trust Gatekeeper: historical heuristic records are marked draft/low
+    await extractor.extractAndCompile(agPath);
+    const decisions = storage.wiki.listDecisions();
+    expect(decisions.some((d) => d.status === 'draft' && d.confidence === 'low')).toBe(true);
+    const cache = storage.cache.getActiveContext();
+    expect(cache?.activeDecisions.length || 0).toBe(0); // Drafts must NOT leak into push cache!
   });
 });

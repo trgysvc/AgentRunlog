@@ -1,6 +1,6 @@
 {
   "name": "agentrunlog",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed engineering memory and Karpathy LLM Wiki for coding agents (Claude Code, Antigravity, Cursor, Codex)",
   "type": "module",
   "bin": {

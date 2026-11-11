@@ -253,6 +253,26 @@
   5. Proje klasör adı, `package.json` adı veya `--alias` ile eşleşen oturumları bulur (özyineleme koruması ile kendi iç çağrılarını eler).
   6. Tüm veriyi `Sanitizer` üzerinden maskeleyerek `.agentrunlog/raw/session-import-*.jsonl` olarak kaydeder ve sert 800-token tavanı (NFR-07) ile `wiki/` + `active_context.json` içine derler. Sonraki süreçlerde ise her 4 platformun hook adaptörleri + otonom MCP yazma araçları üzerinden akış baştan sona takip edilir.
 
+---
+
+## [2026-11-11] — Faz 10: Argon Denetim Tahkikatları & 4 Platform Tam Otomasyon Kurulumu (`setup` + `doctor`)
+
+### 1. Argon Mimari Denetiminden Gelen 3 Kritik Güvence
+- **3 Kademeli Deterministik Proje Eşleştirme (`history-importer.ts`):**  
+  `lowerRaw.includes(projectName)` çapraz bulaşma riskini önlemek için mutlak dosya yolu / klasör sınırı kontrolü, genel kelime kara listesi (`app`, `backend`, `core`, `api` vb.) ve minimum 2+ kez geçme eşiği eklendi.
+- **Artımlı Senkronizasyon Önbelleği (`import_state.json`):**  
+  Değişmeyen transkriptler `mtimeMs` ve `size` takibiyle 0ms'de atlanır; büyük geçmişlerde bellek/hız kaybı önlendi.
+- **NFR-08 Kademeli Güven Süzgeci (`llm-client.ts`, `wiki.ts`):**  
+  Geçmiş konuşmalardan LLM'siz regex ile yakalanan tarihsel kayıtlar `status: 'draft'` ve `confidence: 'low'` olarak işaretlendi; `active_context.json` push önbelleğine sızmaları tamamen engellendi.
+
+### 2. Tüm 4 Platform İçin Tam Otomatik Eklenti Kurulumu & Doğrulama (`src/installer/`)
+- **Neden Yapıldı?**  
+  Kullanıcının tek bir komutla 4 platformun (Antigravity, Claude Code, Cursor, Codex) eklentilerini sorunsuzca kurması ve çalıştığından emin olması için.
+- **Eklenen Modüller:**
+  - `UniversalPluginInstaller` (`runlog setup`): Mevcut kullanıcı ayarlarını bozmadan (non-destructive merge) tüm platformlara MCP, Hook, Rule ve Skill kurar.
+  - `SystemDoctor` (`runlog doctor`): 4 platformun kurulumunu ve canlı stdio MCP handshake testini (8 aracın tümünün yanıt verdiğini) doğrular.
+
+
 
 
 

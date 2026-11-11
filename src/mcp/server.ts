@@ -9,7 +9,7 @@ import { type StorageManager } from '../storage/index.js';
 import { RunlogMcpTools } from './tools.js';
 
 export const MCP_SERVER_NAME = 'agentrunlog';
-export const MCP_SERVER_VERSION = '0.1.1';
+export const MCP_SERVER_VERSION = '0.1.2';
 
 const PROJECT_ROOT_PROP = {
   type: 'string',

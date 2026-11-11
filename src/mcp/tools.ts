@@ -93,12 +93,13 @@ export class RunlogMcpTools {
         const searchable = `${dec.id} ${dec.title} ${dec.context} ${dec.choice} ${dec.decidedBy} ${dec.affectsModules.join(' ')}`.toLowerCase();
         const score = this.calculateMatchScore(searchable, queryTokens);
         if (score > 0 || queryTokens.length === 0) {
+          const prefix = dec.status === 'draft' ? '[DRAFT / HISTORICAL CANDIDATE] ' : '';
           matches.push({
             type: 'decision',
             id: dec.id,
             title: dec.title,
             status: dec.status,
-            summary: `Choice: ${dec.choice} (Decided by: ${dec.decidedBy})`,
+            summary: `${prefix}Choice: ${dec.choice} (Decided by: ${dec.decidedBy})`,
             evidenceSession: dec.evidence.sessionId,
             score,
           });

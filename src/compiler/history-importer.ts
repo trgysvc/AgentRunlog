@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import { type StorageManager } from '../storage/index.js';
@@ -11,6 +11,7 @@ export interface ImportHistoryOptions {
   cursorProjectsDir?: string;
   cursorWorkspaceStorageDir?: string;
   aliases?: string[];
+  force?: boolean;
 }
 
 export interface ImportHistoryResult {
@@ -18,26 +19,117 @@ export interface ImportHistoryResult {
   claudeSessionsImported: number;
   codexSessionsImported: number;
   cursorSessionsImported: number;
+  skippedUnchanged: number;
   totalEventsImported: number;
   importedFiles: string[];
+}
+
+interface ImportFileState {
+  mtimeMs: number;
+  size: number;
+  importedSessionId: string;
+}
+
+interface ImportStateCache {
+  version: number;
+  files: Record<string, ImportFileState>;
+}
+
+const GENERIC_FOLDER_STOPWORDS = new Set([
+  'src', 'app', 'core', 'backend', 'frontend', 'api', 'server', 'client',
+  'lib', 'docs', 'web', 'mobile', 'test', 'tests', 'repo', 'code', 'project', 'home'
+]);
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export class HistoryImporter {
   private storage: StorageManager;
   private projectRoot: string;
+  private stateFilePath: string;
 
   constructor(storage: StorageManager, projectRoot: string = process.cwd()) {
     this.storage = storage;
     this.projectRoot = projectRoot;
+    this.stateFilePath = join(storage.paths.cache, 'import_state.json');
+  }
+
+  private loadImportState(): ImportStateCache {
+    try {
+      if (existsSync(this.stateFilePath)) {
+        const parsed = JSON.parse(readFileSync(this.stateFilePath, 'utf8'));
+        if (parsed && typeof parsed.files === 'object') {
+          return parsed as ImportStateCache;
+        }
+      }
+    } catch {}
+    return { version: 1, files: {} };
+  }
+
+  private saveImportState(state: ImportStateCache): void {
+    try {
+      writeFileSync(this.stateFilePath, JSON.stringify(state, null, 2), 'utf8');
+    } catch {}
+  }
+
+  /**
+   * 3-Tier Deterministic Project Match (Argon Directive):
+   * Tier 1: Exact projectRoot absolute path OR path segment (/${projectName}/ or \\${projectName}\\)
+   * Tier 2: Non-generic alias/package name with word boundary appearing >= 3 times (avoids casual mentions)
+   */
+  private matchesProjectDeterministic(rawContent: string, matchTerms: string[], aliases: string[]): boolean {
+    const lowerRaw = rawContent.toLowerCase();
+    const absRootLower = this.projectRoot.toLowerCase();
+
+    // Tier 1A: Exact absolute project path anywhere in tool calls/prompts
+    if (lowerRaw.includes(absRootLower)) {
+      return true;
+    }
+
+    // Tier 1B: Project folder path boundary (/ProjectName/ or \ProjectName\)
+    const folderName = basename(this.projectRoot).toLowerCase();
+    if (folderName.length >= 3 && !GENERIC_FOLDER_STOPWORDS.has(folderName)) {
+      if (
+        lowerRaw.includes(`/${folderName}/`) ||
+        lowerRaw.includes(`\\${folderName}\\`) ||
+        lowerRaw.includes(`/${folderName}"`) ||
+        lowerRaw.includes(`/${folderName}'`)
+      ) {
+        return true;
+      }
+    }
+
+    // Tier 2A: Automatic non-generic project/package name appearing >= 2 times with word boundaries
+    const autoTerms = matchTerms.filter((t) => t.length >= 4 && !GENERIC_FOLDER_STOPWORDS.has(t));
+    for (const term of autoTerms) {
+      const regex = new RegExp(`\\b${escapeRegExp(term)}\\b`, 'gi');
+      const matches = rawContent.match(regex);
+      if (matches && matches.length >= 2) {
+        return true;
+      }
+    }
+
+    // Tier 2B: Explicit user-supplied --alias with word boundaries
+    const cleanAliases = aliases.filter((t) => t.length >= 3 && !GENERIC_FOLDER_STOPWORDS.has(t));
+    for (const alias of cleanAliases) {
+      const regex = new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'i');
+      if (regex.test(rawContent)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
    * Discovers and imports past agent conversations from ALL 4 supported platforms
-   * (Antigravity, Claude Code, Codex CLI, Cursor) into .agentrunlog/raw/ with secret redaction (FR-01, NFR-01).
+   * with incremental mtime/size tracking (import_state.json) and secret redaction.
    */
   public async importProjectHistory(options: ImportHistoryOptions = {}): Promise<ImportHistoryResult> {
     const projectName = basename(this.projectRoot);
-    const matchTerms = this.buildProjectMatchTerms(projectName, options.aliases);
+    const { matchTerms, aliases } = this.buildProjectMatchTerms(projectName, options.aliases);
+    const state = options.force ? { version: 1, files: {} } : this.loadImportState();
 
     const antigravityDir =
       options.antigravityBrainDir || join(homedir(), '.gemini', 'antigravity', 'brain');
@@ -50,8 +142,22 @@ export class HistoryImporter {
     let claudeCount = 0;
     let codexCount = 0;
     let cursorCount = 0;
+    let skippedUnchanged = 0;
     let totalEvents = 0;
     const importedFiles: string[] = [];
+
+    const checkNeedsImport = (filePath: string): { needsImport: boolean; mtimeMs: number; size: number } => {
+      try {
+        const st = statSync(filePath);
+        const prev = state.files[filePath];
+        if (!options.force && prev && prev.mtimeMs === st.mtimeMs && prev.size === st.size) {
+          return { needsImport: false, mtimeMs: st.mtimeMs, size: st.size };
+        }
+        return { needsImport: true, mtimeMs: st.mtimeMs, size: st.size };
+      } catch {
+        return { needsImport: false, mtimeMs: 0, size: 0 };
+      }
+    };
 
     // 1. Scan Google Antigravity transcripts
     if (existsSync(antigravityDir)) {
@@ -59,7 +165,13 @@ export class HistoryImporter {
         const transcriptPath = join(antigravityDir, convId, '.system_generated', 'logs', 'transcript.jsonl');
         if (!existsSync(transcriptPath)) continue;
 
-        const events = this.parseAntigravityTranscript(transcriptPath, convId, matchTerms);
+        const check = checkNeedsImport(transcriptPath);
+        if (!check.needsImport) {
+          skippedUnchanged++;
+          continue;
+        }
+
+        const events = this.parseAntigravityTranscript(transcriptPath, convId, matchTerms, aliases);
         if (events.length > 0) {
           const sessionId = `import_antigravity_${convId.slice(0, 8)}`;
           const written = this.writeImportedSession(sessionId, events);
@@ -67,7 +179,11 @@ export class HistoryImporter {
             agCount++;
             totalEvents += written;
             importedFiles.push(`session-${sessionId}.jsonl`);
+            state.files[transcriptPath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: sessionId };
           }
+        } else {
+          // Record as checked so we don't re-read unrelated conversations unless they change
+          state.files[transcriptPath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: '' };
         }
       }
     }
@@ -81,7 +197,13 @@ export class HistoryImporter {
           const files = readdirSync(fullProjDir).filter((f) => f.endsWith('.jsonl'));
           for (const file of files) {
             const fullPath = join(fullProjDir, file);
-            const events = this.parseClaudeTranscript(fullPath, file.replace('.jsonl', ''), matchTerms);
+            const check = checkNeedsImport(fullPath);
+            if (!check.needsImport) {
+              skippedUnchanged++;
+              continue;
+            }
+
+            const events = this.parseClaudeTranscript(fullPath, file.replace('.jsonl', ''), matchTerms, aliases);
             if (events.length > 0) {
               const sessionId = `import_claude_${file.replace('.jsonl', '').slice(0, 8)}`;
               const written = this.writeImportedSession(sessionId, events);
@@ -89,7 +211,10 @@ export class HistoryImporter {
                 claudeCount++;
                 totalEvents += written;
                 importedFiles.push(`session-${sessionId}.jsonl`);
+                state.files[fullPath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: sessionId };
               }
+            } else {
+              state.files[fullPath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: '' };
             }
           }
         } catch {}
@@ -100,8 +225,14 @@ export class HistoryImporter {
     if (existsSync(codexDir)) {
       const codexFiles = this.collectFilesRecursive(codexDir, (name) => name.endsWith('.jsonl'));
       for (const filePath of codexFiles) {
+        const check = checkNeedsImport(filePath);
+        if (!check.needsImport) {
+          skippedUnchanged++;
+          continue;
+        }
+
         const rawName = basename(filePath, '.jsonl');
-        const events = this.parseCodexTranscript(filePath, rawName, matchTerms);
+        const events = this.parseCodexTranscript(filePath, rawName, matchTerms, aliases);
         if (events.length > 0) {
           const shortId = rawName.replace(/[^a-zA-Z0-9]/g, '').slice(-10) || 'codex';
           const sessionId = `import_codex_${shortId}`;
@@ -110,17 +241,26 @@ export class HistoryImporter {
             codexCount++;
             totalEvents += written;
             importedFiles.push(`session-${sessionId}.jsonl`);
+            state.files[filePath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: sessionId };
           }
+        } else {
+          state.files[filePath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: '' };
         }
       }
     }
 
-    // 4A. Scan Cursor Agent Transcripts (~/.cursor/projects/<encoded>/agent-transcripts/*.jsonl)
+    // 4A. Scan Cursor Agent Transcripts
     if (existsSync(cursorProjDir)) {
       const cursorFiles = this.collectFilesRecursive(cursorProjDir, (name) => name.endsWith('.jsonl'));
       for (const filePath of cursorFiles) {
+        const check = checkNeedsImport(filePath);
+        if (!check.needsImport) {
+          skippedUnchanged++;
+          continue;
+        }
+
         const rawName = basename(filePath, '.jsonl');
-        const events = this.parseCursorJsonlTranscript(filePath, rawName, matchTerms);
+        const events = this.parseCursorJsonlTranscript(filePath, rawName, matchTerms, aliases);
         if (events.length > 0) {
           const shortId = rawName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10) || 'cursor';
           const sessionId = `import_cursor_${shortId}`;
@@ -129,30 +269,42 @@ export class HistoryImporter {
             cursorCount++;
             totalEvents += written;
             importedFiles.push(`session-${sessionId}.jsonl`);
+            state.files[filePath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: sessionId };
           }
+        } else {
+          state.files[filePath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: '' };
         }
       }
     }
 
     // 4B. Scan Cursor Workspace Storage SQLite (state.vscdb)
     if (cursorWsDir && existsSync(cursorWsDir)) {
-      const wsSessions = await this.parseCursorWorkspaceStorage(cursorWsDir, matchTerms);
-      for (const { id, events } of wsSessions) {
+      const wsSessions = await this.parseCursorWorkspaceStorage(cursorWsDir, matchTerms, aliases);
+      for (const { id, dbPath, mtimeMs, size, events } of wsSessions) {
+        const prev = state.files[dbPath];
+        if (!options.force && prev && prev.mtimeMs === mtimeMs && prev.size === size) {
+          skippedUnchanged++;
+          continue;
+        }
         const sessionId = `import_cursor_ws_${id.slice(0, 8)}`;
         const written = this.writeImportedSession(sessionId, events);
         if (written > 0) {
           cursorCount++;
           totalEvents += written;
           importedFiles.push(`session-${sessionId}.jsonl`);
+          state.files[dbPath] = { mtimeMs, size, importedSessionId: sessionId };
         }
       }
     }
+
+    this.saveImportState(state);
 
     return {
       antigravitySessionsImported: agCount,
       claudeSessionsImported: claudeCount,
       codexSessionsImported: codexCount,
       cursorSessionsImported: cursorCount,
+      skippedUnchanged,
       totalEventsImported: totalEvents,
       importedFiles,
     };
@@ -205,9 +357,11 @@ export class HistoryImporter {
     return join(home, '.config', 'Cursor', 'User', 'workspaceStorage');
   }
 
-  private buildProjectMatchTerms(projectName: string, extraAliases?: string[]): string[] {
+  private buildProjectMatchTerms(
+    projectName: string,
+    extraAliases?: string[]
+  ): { matchTerms: string[]; aliases: string[] } {
     const terms = new Set<string>();
-    terms.add(this.projectRoot.toLowerCase());
     if (projectName.length >= 3) {
       terms.add(projectName.toLowerCase());
     }
@@ -222,28 +376,24 @@ export class HistoryImporter {
       } catch {}
     }
 
-    if (extraAliases) {
-      for (const a of extraAliases) {
-        if (a.length >= 3) terms.add(a.toLowerCase());
-      }
-    }
-
-    return Array.from(terms);
+    const aliases = (extraAliases || []).map((a) => a.toLowerCase()).filter((a) => a.length >= 3);
+    return { matchTerms: Array.from(terms), aliases };
   }
 
   private parseAntigravityTranscript(
     filePath: string,
     convId: string,
-    matchTerms: string[]
+    matchTerms: string[],
+    aliases: string[]
   ): RawSessionEvent[] {
     try {
       const raw = readFileSync(filePath, 'utf8');
       const lowerRaw = raw.toLowerCase();
 
-      if (!matchTerms.some((term) => lowerRaw.includes(term))) return [];
       if (lowerRaw.includes('agentrunlog_internal') || lowerRaw.includes('sen projenin baş mimarı')) {
         return [];
       }
+      if (!this.matchesProjectDeterministic(raw, matchTerms, aliases)) return [];
 
       const lines = raw.split('\n').filter((l) => l.trim().length > 0);
       const events: RawSessionEvent[] = [];
@@ -305,13 +455,12 @@ export class HistoryImporter {
   private parseClaudeTranscript(
     filePath: string,
     sessionId: string,
-    matchTerms: string[]
+    matchTerms: string[],
+    aliases: string[]
   ): RawSessionEvent[] {
     try {
       const raw = readFileSync(filePath, 'utf8');
-      const lowerRaw = raw.toLowerCase();
-
-      if (!matchTerms.some((term) => lowerRaw.includes(term))) return [];
+      if (!this.matchesProjectDeterministic(raw, matchTerms, aliases)) return [];
 
       const lines = raw.split('\n').filter((l) => l.trim().length > 0);
       const events: RawSessionEvent[] = [];
@@ -359,19 +508,15 @@ export class HistoryImporter {
     }
   }
 
-  /**
-   * Parses OpenAI Codex CLI rollout JSONL logs (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl)
-   */
   private parseCodexTranscript(
     filePath: string,
     sessionId: string,
-    matchTerms: string[]
+    matchTerms: string[],
+    aliases: string[]
   ): RawSessionEvent[] {
     try {
       const raw = readFileSync(filePath, 'utf8');
-      const lowerRaw = raw.toLowerCase();
-
-      if (!matchTerms.some((term) => lowerRaw.includes(term))) return [];
+      if (!this.matchesProjectDeterministic(raw, matchTerms, aliases)) return [];
 
       const lines = raw.split('\n').filter((l) => l.trim().length > 0);
       const events: RawSessionEvent[] = [];
@@ -434,19 +579,16 @@ export class HistoryImporter {
     }
   }
 
-  /**
-   * Parses Cursor agent JSONL transcripts (~/.cursor/projects/<path>/agent-transcripts/*.jsonl)
-   */
   private parseCursorJsonlTranscript(
     filePath: string,
     sessionId: string,
-    matchTerms: string[]
+    matchTerms: string[],
+    aliases: string[]
   ): RawSessionEvent[] {
     try {
       const raw = readFileSync(filePath, 'utf8');
-      const lowerRaw = raw.toLowerCase();
-
-      if (!matchTerms.some((term) => lowerRaw.includes(term)) && !filePath.toLowerCase().includes(basename(this.projectRoot).toLowerCase())) {
+      const folderInPath = filePath.toLowerCase().includes(basename(this.projectRoot).toLowerCase());
+      if (!folderInPath && !this.matchesProjectDeterministic(raw, matchTerms, aliases)) {
         return [];
       }
 
@@ -503,21 +645,18 @@ export class HistoryImporter {
     }
   }
 
-  /**
-   * Parses Cursor workspaceStorage SQLite state.vscdb (if Node built-in node:sqlite is available)
-   */
   private async parseCursorWorkspaceStorage(
     wsStorageDir: string,
-    matchTerms: string[]
-  ): Promise<Array<{ id: string; events: RawSessionEvent[] }>> {
-    const results: Array<{ id: string; events: RawSessionEvent[] }> = [];
+    matchTerms: string[],
+    aliases: string[]
+  ): Promise<Array<{ id: string; dbPath: string; mtimeMs: number; size: number; events: RawSessionEvent[] }>> {
+    const results: Array<{ id: string; dbPath: string; mtimeMs: number; size: number; events: RawSessionEvent[] }> = [];
 
     let DatabaseSync: any;
     try {
       const sqliteMod = await import('node:sqlite' as string);
       DatabaseSync = sqliteMod.DatabaseSync;
     } catch {
-      // Built-in node:sqlite requires Node >= 22.5; gracefully skip on older Node
       return results;
     }
 
@@ -530,8 +669,11 @@ export class HistoryImporter {
 
         try {
           const wsJsonRaw = readFileSync(wsJsonPath, 'utf8').toLowerCase();
-          if (!matchTerms.some((t) => wsJsonRaw.includes(t))) continue;
+          const absLower = this.projectRoot.toLowerCase();
+          const allTerms = [absLower, ...matchTerms, ...aliases].filter((t) => !GENERIC_FOLDER_STOPWORDS.has(t));
+          if (!allTerms.some((t) => wsJsonRaw.includes(t))) continue;
 
+          const st = statSync(dbPath);
           const db = new DatabaseSync(dbPath, { open: true, readOnly: true });
           const rows = db
             .prepare("SELECT key, value FROM ItemTable WHERE key LIKE '%chat%' OR key LIKE '%composer%'")
@@ -565,7 +707,7 @@ export class HistoryImporter {
           }
 
           if (events.length > 0) {
-            results.push({ id: wsId, events });
+            results.push({ id: wsId, dbPath, mtimeMs: st.mtimeMs, size: st.size, events });
           }
         } catch {}
       }

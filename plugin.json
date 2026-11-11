@@ -1,7 +1,7 @@
 {
   "name": "agentrunlog",
   "displayName": "AgentRunlog Memory",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed engineering memory & Karpathy LLM Wiki for coding agents. Remembers architectural decisions, RCAs, and dead ends across sessions.",
   "author": {
     "name": "Turgay Savacı",

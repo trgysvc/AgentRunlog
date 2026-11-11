@@ -214,11 +214,13 @@ export class WikiManager {
 
     // 3. Generate main wiki/index.md
     const activeDecisions = decisions.filter((d) => d.status === 'active');
+    const draftDecisions = decisions.filter((d) => d.status === 'draft');
     const indexContent: string[] = [
       '# AgentRunlog Engineering Memory Wiki 🧠',
       '\n> Compiled knowledge base following Andrej Karpathy\'s LLM Wiki pattern.\n',
       '## Overview',
       `- **Active Decisions:** ${activeDecisions.length}`,
+      `- **Draft / Historical Candidates:** ${draftDecisions.length}`,
       `- **Superseded Decisions:** ${decisions.filter((d) => d.status === 'superseded').length}`,
       `- **Known Dead Ends:** ${deadEnds.length}`,
       `- **Root Cause Analyses:** ${rcas.length}`,
@@ -229,6 +231,16 @@ export class WikiManager {
       ...activeDecisions.map(
         (d) => `| [${d.id}](decisions/${d.id}.md) | ${d.title} | ${d.decidedBy} | \`${d.affectsModules.join(', ') || 'Global'}\` |`
       ),
+      ...(draftDecisions.length > 0
+        ? [
+            '\n## Historical Candidates (Draft — Unverified)',
+            '| ID | Title | Confidence | Evidence Session |',
+            '| :--- | :--- | :--- | :--- |',
+            ...draftDecisions.map(
+              (d) => `| [${d.id}](decisions/${d.id}.md) | ${d.title} | ${d.confidence} | ${d.evidence.sessionId} |`
+            ),
+          ]
+        : []),
       '\n## Known Dead Ends (Soft Guardrail)',
       '| ID | Title | Why Failed | Retry Conditions |',
       '| :--- | :--- | :--- | :--- |',
