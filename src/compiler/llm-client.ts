@@ -1,5 +1,10 @@
+import { createHash } from 'node:crypto';
 import { type ExtractedBundle } from './extractor.js';
 import { type RawSessionEvent } from '../types/schemas.js';
+
+function deterministicShortId(seed: string): string {
+  return createHash('sha256').update(seed).digest('hex').slice(0, 6).toUpperCase();
+}
 
 export interface LLMClientConfig {
   provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'heuristic';
@@ -199,7 +204,7 @@ export class LLMCompilerClient {
       if (e.eventType === 'post_tool_use' && (payload.error || payload.exitCode !== 0)) {
         if (payload.exitCode && payload.exitCode !== 0) {
           bundle.rcas.push({
-            id: `RCA-${Date.now().toString().slice(-4)}`,
+            id: `RCA-${deterministicShortId(`${sessionId}:rca:${i}`)}`,
             title: `Command Failed: ${String(payload.command || payload.tool || 'Tool')}`,
             incident: String(payload.error || `Exit code ${payload.exitCode}`),
             rootCause: 'Command returned non-zero exit code during execution',
@@ -220,7 +225,7 @@ export class LLMCompilerClient {
       // Detect task descriptions from initial prompt
       if (e.eventType === 'prompt_submit' && payload.text && bundle.tasks.length === 0) {
         bundle.tasks.push({
-          id: `TASK-${Date.now().toString().slice(-4)}`,
+          id: `TASK-${deterministicShortId(`${sessionId}:task:${i}`)}`,
           title: String(payload.text).slice(0, 60),
           summary: String(payload.text),
           filesModified: [],
