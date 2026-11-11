@@ -16,6 +16,7 @@ docs/*PRD*
 # Dependencies & Build
 node_modules/
 dist/
+*.tgz
 __pycache__/
 *.pyc
 .venv/

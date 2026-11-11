@@ -109,6 +109,52 @@ A lightweight linter periodically scans the wiki:
 
 ---
 
+## 🚀 Quick Start & Installation
+
+### 1. Install Globally (from GitHub or Release Tarball)
+```bash
+# Directly from GitHub
+npm install -g git+https://github.com/trgysvc/AgentRunlog.git
+
+# Or from the latest GitHub Release tarball
+npm install -g https://github.com/trgysvc/AgentRunlog/releases/download/v0.1.0/agentrunlog-0.1.0.tgz
+```
+
+### 2. Initialize in Your Project
+Navigate to any coding repository and run:
+```bash
+runlog init
+```
+This automatically:
+- Creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`, `config.json`).
+- Adds `.agentrunlog/raw/` to `.gitignore` for privacy.
+- Installs hook adapters for **Claude Code**, **Google Antigravity**, **Cursor**, and **Codex CLI**.
+
+### 3. Connect MCP Server to Your Agent
+Add `agentrunlog` to your agent's MCP configuration:
+
+**Google Antigravity (`~/.gemini/config/mcp_config.json`) / Claude Code / Cursor:**
+```json
+{
+  "mcpServers": {
+    "agentrunlog": {
+      "command": "runlog",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### 4. Useful CLI Commands
+```bash
+runlog status    # View active/superseded decisions, RCAs, and cache token budget
+runlog compile   # Manually compile raw session transcripts into wiki pages
+runlog lint      # Audit wiki for stale file references or broken supersedes links
+runlog reindex   # Rebuild the entire wiki and cache from raw transcripts (NFR-10)
+```
+
+---
+
 ## 🗺️ Roadmap & Status
 
 - [ ] **Core Engine**: Typed record schemas (`schema.md`), disk storage layout, and sanitization filter.
