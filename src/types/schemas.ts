@@ -134,6 +134,16 @@ export const ActiveContextCacheSchema = z.object({
       affectsModules: z.array(z.string()),
     })
   ),
+  recentRCAs: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        incident: z.string(),
+        resolution: z.string(),
+      })
+    )
+    .default([]),
   estimatedTokens: z.number().default(0),
 });
 export type ActiveContextCache = z.infer<typeof ActiveContextCacheSchema>;

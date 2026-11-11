@@ -150,6 +150,7 @@ ${formattedEvents}
   public refreshActiveContextCache(): void {
     const allDecisions = this.storage.wiki.listDecisions();
     const allDeadEnds = this.storage.wiki.listDeadEnds();
+    const allRCAs = this.storage.wiki.listRCAs();
 
     // Active, high/medium confidence, not superseded
     const activeDecisions = allDecisions
@@ -175,9 +176,22 @@ ${formattedEvents}
         affectsModules: de.affectsModules,
       }));
 
+    // Recent RCAs (top 3 high/medium confidence)
+    const recentRCAs = allRCAs
+      .filter((r) => r.confidence !== 'low')
+      .slice(-3)
+      .map((r) => ({
+        id: r.id,
+        title: r.title,
+        incident: r.incident.slice(0, 150),
+        resolution: r.resolution.slice(0, 150),
+      }));
+
     // Calculate approximate token count (~4 characters per token)
     const rawLength =
-      JSON.stringify(activeDecisions).length + JSON.stringify(recentDeadEnds).length;
+      JSON.stringify(activeDecisions).length +
+      JSON.stringify(recentDeadEnds).length +
+      JSON.stringify(recentRCAs).length;
     const estimatedTokens = Math.ceil(rawLength / 4);
 
     this.storage.cache.setActiveContext({
@@ -185,6 +199,7 @@ ${formattedEvents}
       lastUpdated: new Date().toISOString(),
       activeDecisions,
       recentDeadEnds,
+      recentRCAs,
       estimatedTokens,
     });
   }

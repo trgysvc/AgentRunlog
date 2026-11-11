@@ -233,6 +233,12 @@ export class WikiManager {
       ...deadEnds.map(
         (de) => `| [${de.id}](dead-ends/${de.id}.md) | ${de.title} | ${de.whyFailed} | ${de.retryConditions} |`
       ),
+      '\n## Root Cause Analyses (RCA)',
+      '| ID | Title | Incident | Resolution |',
+      '| :--- | :--- | :--- | :--- |',
+      ...rcas.map(
+        (r) => `| [${r.id}](rca/${r.id}.md) | ${r.title} | ${r.incident.replace(/\|/g, '/')} | ${r.resolution.replace(/\|/g, '/')} |`
+      ),
       '\n## Module Context Directory (FR-08)',
       ...Array.from(moduleMap.keys()).map((m) => {
         const slug = toModuleSlug(m);

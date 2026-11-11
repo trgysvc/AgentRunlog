@@ -109,6 +109,22 @@ A lightweight linter periodically scans the wiki:
 
 ---
 
+## 🤖 Dual-Agent Design & Zero-Cost Offline Compiler
+
+AgentRunlog makes an intentional architectural distinction between the **Working Agent** and the **Compiler Worker**:
+
+- **Working Agent (Claude Code, Google Antigravity, Cursor, Codex):** The primary AI coding assistant actively conversing with you, reading files, and writing code.
+- **Compiler Worker (FR-10, NFR-06):** An asynchronous background process that parses raw JSONL session logs to extract structured decisions, RCAs, and dead ends without polluting the working agent's context.
+
+> [!IMPORTANT]
+> **Why an Out-of-Band Compiler?**  
+> Forcing the working agent to simultaneously code and summarize hundreds of lines of chat history causes context bloat and mental fatigue (the primary pitfall observed in tools like Cline / Roo-Code). AgentRunlog offloads compilation to the background.
+>
+> **Zero External LLM Cost (Offline Heuristic Compiler):**  
+> All 4 supported coding platforms already run their own frontier LLMs. Requiring users to configure external cloud API keys (OpenAI, Anthropic) just for memory compilation creates unnecessary friction. Therefore, AgentRunlog ships with a **Zero-Cost Offline Heuristic Compiler**: even without external API keys or network access, running `runlog compile` uses deterministic pattern recognition to extract failing commands, tool crashes, and task summaries into typed engineering artifacts. External LLMs (OpenAI, Anthropic, Gemini, Ollama) can optionally be configured if desired.
+
+---
+
 ## 🚀 Quick Start & Installation
 
 ### 1. Install Globally (from GitHub or Release Tarball)
@@ -157,15 +173,15 @@ runlog reindex   # Rebuild the entire wiki and cache from raw transcripts (NFR-1
 
 ## 🗺️ Roadmap & Status
 
-- [ ] **Core Engine**: Typed record schemas (`schema.md`), disk storage layout, and sanitization filter.
-- [ ] **MCP Server**: Fast local MCP server providing `search`, `get_decision`, and `check_dead_ends`.
-- [ ] **Capture Adapters**:
-  - [ ] Claude Code hook adapter
-  - [ ] Google Antigravity hook adapter
-  - [ ] Cursor hook & rules adapter
-  - [ ] Codex CLI hook adapter
-- [ ] **Compiler Worker**: Background transcript parsing and typed wiki distillation.
-- [ ] **Wiki Linter**: Conflict and staleness detection.
+- [x] **Core Engine**: Typed record schemas (`schema.md`), disk storage layout, and sanitization filter.
+- [x] **MCP Server**: Fast local MCP server providing `search_runlog`, `get_decision`, `get_rca`, `check_dead_ends`, and `get_active_context`.
+- [x] **Capture Adapters**:
+  - [x] Claude Code hook adapter
+  - [x] Google Antigravity hook adapter
+  - [x] Cursor hook & rules adapter
+  - [x] Codex CLI hook adapter
+- [x] **Compiler Worker**: Zero-cost offline heuristic & multi-LLM transcript parser, `active_context.json` cache, and `wiki/index.md` builder.
+- [x] **Wiki Linter**: Conflict, broken supersede link, and staleness detection (`runlog lint` & `runlog reindex`).
 
 ---
 

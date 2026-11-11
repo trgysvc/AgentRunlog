@@ -176,4 +176,20 @@
 
 - **Nihai Test Durumu:** 6 test dosyasında 26 birim ve entegrasyon testinin tamamı yeşil (`26 passed`).
 
+---
+
+## [2026-11-11] — Canlı Saha Testi (AuraStreamBE) ve Push Cache İyileştirmesi
+
+### 1. AuraStreamBE Canlı Testinden Çıkan Bulgu
+- **Ne Oldu?**  
+  `AuraStreamBE` projesinde yapılan canlı testte `SuperSecretPass123` şifresi başarıyla maskelendi (`[REDACTED:PASSWORD:51926f]`) ve `runlog compile` ile `RCA-1377.md` çıkarıldı.  
+  Ancak sonraki oturumda `runlog hook antigravity pre-invocation` çalıştırıldığında çıktı boş döndü.
+- **Kök Neden:**  
+  `ActiveContextCacheSchema` ve `formatPushInjection` yalnızca `activeDecisions` ve `recentDeadEnds` içeriyordu; yeni oluşan kritik `RCA` kayıtlarını oturum başına push etmiyordu.
+- **Nasıl Çözüldü?**  
+  - `ActiveContextCacheSchema` içine `recentRCAs` (son 3 RCA kaydı) eklendi.
+  - `wiki/index.md` üreticisine `Root Cause Analyses (RCA)` tablosu eklendi.
+  - `README.md` dosyasına **Dual-Agent Design & Zero-Cost Offline Compiler** mimari açıklaması eklendi.
+
+
 

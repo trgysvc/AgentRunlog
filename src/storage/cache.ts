@@ -39,7 +39,11 @@ export class ContextCacheManager {
    */
   public formatPushInjection(cache: ActiveContextCache | null): string | null {
     if (!cache) return null;
-    if (cache.activeDecisions.length === 0 && cache.recentDeadEnds.length === 0) {
+    if (
+      cache.activeDecisions.length === 0 &&
+      cache.recentDeadEnds.length === 0 &&
+      (!cache.recentRCAs || cache.recentRCAs.length === 0)
+    ) {
       return null;
     }
 
@@ -58,6 +62,13 @@ export class ContextCacheManager {
         sections.push(
           `- **[${de.id}] ${de.title}**: Failed because "${de.whyFailed}". Retry condition: ${de.retryConditions}`
         );
+      }
+    }
+
+    if (cache.recentRCAs && cache.recentRCAs.length > 0) {
+      sections.push('### 🔍 Recent Root Cause Analyses (Known Fixes):');
+      for (const rca of cache.recentRCAs) {
+        sections.push(`- **[${rca.id}] ${rca.title}**: ${rca.incident} → Fix: ${rca.resolution}`);
       }
     }
 
