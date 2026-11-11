@@ -19,8 +19,5 @@ AgentRunlog implements Andrej Karpathy's **LLM Wiki** pattern to maintain persis
 - **Dead Ends (`record_dead_end`)**: Only for structural/architectural incompatibilities (never transient network/syntax errors). Always specify explicit `retryConditions`.
 - **Root Cause Analyses (`record_rca`)**: Whenever a non-trivial bug is diagnosed and fixed, recording the incident, root cause, and preventative resolution.
 
-## Project Setup for Users
-If `.agentrunlog/` does not exist in the workspace yet, inform the user they can initialize it in one command:
-```bash
-runlog init
-```
+## Zero-Config Auto-Bootstrap
+AgentRunlog automatically initializes `.agentrunlog/`, secures `.gitignore`, scans the codebase, and imports past agent conversations across all 4 platforms on the first hook or MCP call (`get_active_context`). Users never have to remember manual setup commands.

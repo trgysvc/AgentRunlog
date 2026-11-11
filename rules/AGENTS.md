@@ -1,7 +1,7 @@
 # AgentRunlog Engineering Memory Rules
 
 You have access to the **AgentRunlog** typed engineering memory system via MCP (`agentrunlog`).
-Follow these rules on every project where `.agentrunlog/` is initialized:
+AgentRunlog **auto-initializes and scans any project automatically** on the first turn or MCP call — you do NOT need to ask the user to run CLI commands.
 
 **IMPORTANT:** Always pass `projectRoot: "<active workspace absolute path>"` when calling any `agentrunlog` MCP tool so it targets the active repository instead of the plugin install directory.
 

@@ -9,7 +9,7 @@ import { type StorageManager } from '../storage/index.js';
 import { RunlogMcpTools } from './tools.js';
 
 export const MCP_SERVER_NAME = 'agentrunlog';
-export const MCP_SERVER_VERSION = '0.1.2';
+export const MCP_SERVER_VERSION = '0.1.3';
 
 const PROJECT_ROOT_PROP = {
   type: 'string',
@@ -214,6 +214,7 @@ export function createRunlogMcpServer(storageManager?: StorageManager): {
     const projectRoot = args?.projectRoot ? String(args.projectRoot) : undefined;
 
     try {
+      await tools.ensureBootstrapped(projectRoot);
       switch (name) {
         case 'search_runlog': {
           const query = String(args?.query || '');

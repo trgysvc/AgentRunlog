@@ -1,5 +1,8 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { StorageManager } from '../storage/index.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
+import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/auto-bootstrap.js';
 import { type Decision, type RCA, type DeadEnd } from '../types/schemas.js';
 
 export interface SearchRunlogParams {
@@ -27,6 +30,17 @@ export class RunlogMcpTools {
 
   constructor(storage?: StorageManager) {
     this.defaultStorage = storage;
+  }
+
+  public async ensureBootstrapped(projectRoot?: string): Promise<void> {
+    const targetRoot = projectRoot || process.env.AGENTRUNLOG_PROJECT_ROOT;
+    if (!targetRoot || !isValidProjectDirectory(targetRoot)) return;
+
+    const marker = join(targetRoot, '.agentrunlog', 'cache', 'bootstrap.done');
+    if (!existsSync(marker)) {
+      const { storage } = await ensureProjectBootstrapped(targetRoot);
+      this.storageCache.set(targetRoot, storage);
+    }
   }
 
   private getStorage(projectRoot?: string): StorageManager {

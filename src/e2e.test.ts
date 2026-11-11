@@ -150,4 +150,34 @@ describe('End-to-End System Integration Flow', () => {
     const reindexRes = reindexer.reindex();
     expect(reindexRes.processedSessions).toBe(2); // sess_prod_001 and sess_prod_002
   });
+
+  it('auto-bootstraps valid project directories automatically without manual init', async () => {
+    const { writeFileSync } = await import('node:fs');
+    const { homedir } = await import('node:os');
+    const { isValidProjectDirectory, ensureProjectBootstrapped } = await import('./compiler/auto-bootstrap.js');
+
+    // Must safely refuse $HOME
+    expect(isValidProjectDirectory(homedir())).toBe(false);
+
+    // Create a fresh uninitialized project directory
+    const autoProjDir = join(tmpdir(), `agentrunlog_autoboot_${Date.now()}`);
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(autoProjDir, { recursive: true });
+    writeFileSync(join(autoProjDir, 'package.json'), JSON.stringify({ name: 'auto-proj', dependencies: { zod: '3.0.0' } }), 'utf8');
+    writeFileSync(join(autoProjDir, '.gitignore'), 'node_modules/\n', 'utf8');
+
+    expect(isValidProjectDirectory(autoProjDir)).toBe(true);
+
+    // First call auto-bootstraps completely
+    const first = await ensureProjectBootstrapped(autoProjDir);
+    expect(first.bootstrappedNow).toBe(true);
+    expect(existsSync(join(autoProjDir, '.agentrunlog', 'cache', 'bootstrap.done'))).toBe(true);
+    expect(readFileSync(join(autoProjDir, '.gitignore'), 'utf8')).toContain('.agentrunlog/raw/');
+
+    // Second call skips immediately
+    const second = await ensureProjectBootstrapped(autoProjDir);
+    expect(second.bootstrappedNow).toBe(false);
+
+    rmSync(autoProjDir, { recursive: true, force: true });
+  });
 });

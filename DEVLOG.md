@@ -272,6 +272,19 @@
   - `UniversalPluginInstaller` (`runlog setup`): Mevcut kullanıcı ayarlarını bozmadan (non-destructive merge) tüm platformlara MCP, Hook, Rule ve Skill kurar.
   - `SystemDoctor` (`runlog doctor`): 4 platformun kurulumunu ve canlı stdio MCP handshake testini (8 aracın tümünün yanıt verdiğini) doğrular.
 
+---
+
+## [2026-11-11] — Faz 11: Sıfır Müdahale Tam Otomasyon (`postinstall` + Auto-Bootstrap)
+
+### 1. Kullanıcının Komut Unutması İhtimalini Sıfırlama (`src/compiler/auto-bootstrap.ts`)
+- **Neden Yapıldı?**  
+  Kullanıcı kurulum sonrası `runlog init` veya `runlog setup` demeyi unutabilir; eklenti bunu kullanıcıya bırakmadan kendi başına halletmelidir.
+- **Ne Yapıldı?**
+  1. **`postinstall` Otomasyonu (`package.json`):** `npm install -g` çalıştığı anda otomatik olarak `UniversalPluginInstaller.installAll()` tetiklenir ve 4 platform eklentisi kurulur.
+  2. **İlk Hook / MCP Çağrısında Otomatik Başlatma (`ensureProjectBootstrapped`):** Kullanıcı herhangi bir projeyi açtığında daha önce `runlog init` çalıştırmamış olsa bile; ilk hook (`bootstrap` detached worker) veya ilk MCP çağrısı projenin geçerli bir yazılım klasörü olduğunu doğrular (`$HOME` veya `/` hariç), `.agentrunlog/` dizinini açar, `.gitignore`'u korur, kod tabanını ve 4 platformun geçmiş sohbetlerini otomatik tarar.
+  3. **Çökme Kurtarma (Crash Recovery):** Önceki oturum `Stop`/`SessionEnd` tetiklemeden kapandıysa, sonraki oturum başlangıcında derleyici worker arka planda sessizce eksik verileri derler.
+
+
 
 
 

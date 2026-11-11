@@ -128,41 +128,32 @@ AgentRunlog makes an intentional architectural distinction between the **Working
 
 ---
 
-## 🚀 Automated Installation (All 4 Platforms)
+## 🚀 Zero-Config Installation (One Command, All 4 Platforms)
 
 AgentRunlog ships as a **Universal Plugin Bundle** (`plugin.json`, `mcp_config.json`, `hooks.json`, `rules/`, and `skills/`).
 
-### 1. Install Globally & Auto-Configure All 4 Platforms
+### 1. Install Globally (Auto-Configures All 4 Platforms via `postinstall`)
 ```bash
 npm install -g git+https://github.com/trgysvc/AgentRunlog.git
-runlog setup
 ```
 
-`runlog setup` automatically and non-destructively installs and verifies **all 4 platforms** in one step, then runs a **live MCP handshake check (`runlog doctor`)**:
+That's it! During global installation, `postinstall` automatically and non-destructively installs and configures **all 4 platforms** (you can also re-run `runlog setup` or `runlog doctor` anytime):
 - 🟣 **Google Antigravity:** Native plugin (`~/.gemini/config/plugins/agentrunlog/`) with MCP, Hooks, `rules/AGENTS.md`, and `SKILL.md`.
 - 🟠 **Claude Code:** Global MCP (`~/.claude.json`), Hooks (`~/.claude/settings.json`), and Skill (`~/.claude/skills/agentrunlog/`).
 - 🔵 **Cursor IDE & CLI:** Global MCP (`~/.cursor/mcp.json`), Hooks (`~/.cursor/hooks.json`), and Rules (`~/.cursor/rules/agentrunlog.mdc`).
 - 🟢 **OpenAI Codex CLI:** Global MCP & `features.hooks = true` (`~/.codex/config.toml`), Hooks (`~/.codex/hooks.json`), and `AGENTS.md`.
 
-*(Need to install for just one platform? Run `runlog install-plugin <antigravity|claude|cursor|codex>`. To re-verify anytime, run `runlog doctor`.)*
-
 ---
 
-## 🛠️ How to Use While Developing a Project (Daily Workflow)
+## 🛠️ How It Works Day-to-Day (100% Automatic)
 
-Once installed, **AgentRunlog works automatically in the background** without slowing down your workflow:
+You **never** need to remember `runlog init`, `runlog compile`, or *"save this"*!
 
-### Step 1: Initialize Your Repository (One-Time)
-Navigate to your project folder (even if the project is already halfway built!) and run:
-```bash
-runlog init
-```
-This immediately:
-- Creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`) and adds `.agentrunlog/raw/` to `.gitignore`.
-- Installs project-level hooks.
-- **Bootstraps Existing Codebase (`CodebaseScanner` + `HistoryImporter`):** Automatically scans your manifests (`package.json`, `pyproject.toml`, `pubspec.yaml`, etc.), existing documentation (`README.md`, `CLAUDE.md`), `git log` history, source directories (`src/`, `app/`, `lib/`), **and past conversation transcripts across all 4 platforms** (Antigravity `~/.gemini/antigravity/brain/`, Claude Code `~/.claude/projects/`, Codex CLI `~/.codex/sessions/`, and Cursor `~/.cursor/projects/` & `workspaceStorage/state.vscdb`). Your agent immediately understands past decisions, crashes, and architecture from day one!
+### Step 1: Just Open Any Project & Start Coding
+Open **any** project (new or halfway built) in Antigravity, Claude Code, Cursor, or Codex and start chatting:
+- On the **very first hook or MCP call**, AgentRunlog automatically detects the project workspace, creates `.agentrunlog/`, secures `.gitignore`, scans the codebase (`package.json`, `git log`, `src/`), and imports past conversations across all 4 platforms in the background!
 
-### Step 2: Code Normally (Zero Effort — Fully Automatic)
+### Step 2: Work Normally (Zero User Effort)
 You **never** need to say *"save this"* or *"update memory"*. Simply talk to your AI agent and code naturally:
 - **Silent Capture & Secret Redaction:** Every prompt, tool run, and error is silently logged to `.agentrunlog/raw/` via hooks, with API keys and passwords stripped before hitting disk.
 - **Autonomous Live Recording:** When you naturally confirm a choice (*"Let's use Drizzle ORM instead of Prisma"*), the plugin rules instruct the agent to silently call `record_decision` in the background.

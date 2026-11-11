@@ -7,10 +7,11 @@ import { WikiReindexer } from '../compiler/reindex.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
 import { CodebaseScanner } from '../compiler/scanner.js';
 import { HistoryImporter } from '../compiler/history-importer.js';
+import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/auto-bootstrap.js';
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
-import { existsSync, readFileSync, appendFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -98,6 +99,55 @@ Usage:
     return;
   }
 
+  if (command === 'postinstall') {
+    // Only auto-configure all 4 platforms on global install (npm install -g ...)
+    if (process.env.npm_config_global === 'true') {
+      try {
+        const installer = new UniversalPluginInstaller();
+        installer.installAll();
+        console.log('⚡ AgentRunlog: Automatically configured plugins for Antigravity, Claude Code, Cursor, and Codex CLI.');
+      } catch {}
+    }
+    return;
+  }
+
+  if (command === 'bootstrap') {
+    if (isValidProjectDirectory(process.cwd())) {
+      await ensureProjectBootstrapped(process.cwd());
+    }
+    return;
+  }
+
+  if (command === 'mcp') {
+    const { server } = createRunlogMcpServer();
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    return;
+  }
+
+  if (command === 'hook') {
+    if (!isValidProjectDirectory(process.cwd())) {
+      return;
+    }
+    const hookStorage = new StorageManager();
+    const hookManager = new HookManager(hookStorage);
+    const platform = args[1] || 'claude';
+    const event = args[2] || 'session-start';
+    const sessionId = args[3];
+
+    const pushText = await hookManager.runner.runHook({
+      platform,
+      event,
+      sessionId,
+      cliPath: process.argv[1],
+    });
+
+    if (pushText) {
+      process.stdout.write(pushText + '\n');
+    }
+    return;
+  }
+
   const storage = new StorageManager();
   const hooks = new HookManager(storage);
 
@@ -167,6 +217,7 @@ Usage:
           }
           console.log('✨ Compiled imported conversations into wiki memory.');
         }
+        writeFileSync(join(storage.paths.cache, 'bootstrap.done'), new Date().toISOString(), 'utf8');
       }
 
       console.log('\n🎉 AgentRunlog initialized successfully! Your coding agents now retain persistent memory.');
@@ -202,6 +253,7 @@ Usage:
         }
         console.log('✨ Compiled all imported transcripts into wiki & active_context.json!');
       }
+      writeFileSync(join(storage.paths.cache, 'bootstrap.done'), new Date().toISOString(), 'utf8');
       break;
     }
 
@@ -291,43 +343,19 @@ Usage:
       break;
     }
 
-    case 'mcp': {
-      const { server } = createRunlogMcpServer(storage);
-      const transport = new StdioServerTransport();
-      await server.connect(transport);
-      break;
-    }
-
-    case 'hook': {
-      const platform = args[1] || 'claude';
-      const event = args[2] || 'session-start';
-      const sessionId = args[3];
-
-      const pushText = await hooks.runner.runHook({
-        platform,
-        event,
-        sessionId,
-        cliPath: process.argv[1],
-      });
-
-      if (pushText) {
-        process.stdout.write(pushText + '\n');
-      }
-      break;
-    }
-
     default:
       console.log(`
 AgentRunlog CLI — Typed Engineering Memory for Coding Agents
 
 Usage:
-  runlog init [platform]    Initialize memory and install hooks (claude | antigravity | cursor | codex | all)
-  runlog compile [session]  Extract typed knowledge from session transcripts using LLM compiler
-  runlog status             Display memory statistics and active context cache size
-  runlog lint               Audit wiki for broken supersedes, stale references, and invalid records
-  runlog reindex            Rebuild wiki and cache from raw transcripts (NFR-10)
-  runlog mcp                Start Model Context Protocol (MCP) server over stdio
-  runlog hook <plt> <evt>   Execute platform hook event with stdin capture (< 20ms SLA)
+  runlog setup                Install plugins across ALL 4 platforms & run full verification
+  runlog doctor               Verify all 4 platform plugins + live MCP JSON-RPC handshake
+  runlog init [platform]      Initialize memory, scan codebase + history, and install project hooks
+  runlog scan [--alias name]  Scan existing codebase + past conversations across all 4 platforms
+  runlog compile [session]    Extract typed knowledge from session transcripts using compiler
+  runlog status               Display memory statistics and active context cache size
+  runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
+  runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
 `);
       break;
   }

@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
 import { type HookManager } from './index.js';
 
@@ -62,15 +64,15 @@ export class HookRunner {
   }
 
   /**
-   * Spawns detached compiler worker in the background (NFR-06, NFR-09)
+   * Spawns detached background CLI subcommand (compile | bootstrap) with NFR-09 recursion shield
    */
-  public triggerDetachedCompiler(cliPath: string): void {
+  public triggerDetachedWorker(cliPath: string, subcommand: 'compile' | 'bootstrap' = 'compile'): void {
     if (process.env.AGENTRUNLOG_INTERNAL === '1' || process.env.AGENTRUNLOG_SKIP === '1') {
       return;
     }
 
     try {
-      const child = spawn(process.execPath, [cliPath, 'compile'], {
+      const child = spawn(process.execPath, [cliPath, subcommand], {
         detached: true,
         stdio: 'ignore',
         env: {
@@ -80,8 +82,12 @@ export class HookRunner {
       });
       child.unref();
     } catch (err) {
-      console.warn('Could not spawn detached compiler worker:', err);
+      console.warn(`Could not spawn detached ${subcommand} worker:`, err);
     }
+  }
+
+  public triggerDetachedCompiler(cliPath: string): void {
+    this.triggerDetachedWorker(cliPath, 'compile');
   }
 
   /**
@@ -157,12 +163,19 @@ export class HookRunner {
       pushText = this.storage.cache.formatPushInjection(cache);
     }
 
-    // 3. Handle session completion events (Trigger detached background compiler)
+    // 3. Auto-bootstrap uninitialized projects in background (zero manual init needed!)
+    const isBootstrapDone = existsSync(join(this.storage.paths.cache, 'bootstrap.done'));
+    if (!isBootstrapDone && args.cliPath) {
+      this.triggerDetachedWorker(args.cliPath, 'bootstrap');
+    }
+
+    // 4. Handle session completion events or crash recovery on start (Trigger detached compiler)
     const isCompletionEvent =
       event === 'session-end' || event === 'stop' || event === 'pre-compact';
+    const isStartEvent = event === 'session-start' || event === 'pre-invocation' || event === 'before-submit-prompt';
 
-    if (isCompletionEvent && args.cliPath) {
-      this.triggerDetachedCompiler(args.cliPath);
+    if (args.cliPath && isBootstrapDone && (isCompletionEvent || isStartEvent)) {
+      this.triggerDetachedWorker(args.cliPath, 'compile');
     }
 
     return pushText;
