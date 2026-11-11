@@ -1,2 +1,5 @@
 # AgentRunlog
-ersistent, typed memory layer and Karpathy LLM Wiki for AI coding agents (Claude Code, Cursor, Antigravity, Codex). Captures sessions, builds structured ADR/RCA logs, and injects context via MCP &amp; hooks.
+
+The typed engineering memory and Karpathy LLM Wiki for coding agents.
+
+Stop your coding agents from repeating past mistakes. AgentRunlog captures raw session transcripts, compiles them into structured engineering knowledge (Decisions, RCAs, Dead Ends), and injects verified context across Claude Code, Antigravity, Codex, and Cursor using hooks and MCP.
