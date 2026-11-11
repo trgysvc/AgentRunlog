@@ -152,47 +152,69 @@ ${formattedEvents}
     const allDeadEnds = this.storage.wiki.listDeadEnds();
     const allRCAs = this.storage.wiki.listRCAs();
 
-    // Active, high/medium confidence, not superseded
-    const activeDecisions = allDecisions
-      .filter((d) => d.status === 'active' && d.confidence !== 'low' && !d.supersededBy)
-      .slice(0, 10)
-      .map((d) => ({
-        id: d.id,
-        title: d.title,
-        choice: d.choice,
-        affectsModules: d.affectsModules,
-      }));
+    const maxChars = (this.storage.config.maxPushTokens || 800) * 4;
+    let currentChars = 0;
 
-    // Recent dead ends to warn against
-    const recentDeadEnds = allDeadEnds
-      .filter((d) => d.confidence !== 'low')
-      .slice(0, 5)
-      .map((de) => ({
+    // Prioritize high-signal records within strict NFR-07 token budget
+    const activeDecisions: Array<{ id: string; title: string; choice: string; affectsModules: string[] }> = [];
+    const recentDeadEnds: Array<{
+      id: string;
+      title: string;
+      approach: string;
+      whyFailed: string;
+      retryConditions: string;
+      affectsModules: string[];
+    }> = [];
+    const recentRCAs: Array<{ id: string; title: string; incident: string; resolution: string }> = [];
+
+    // 1. Add known dead ends first (prevent repeated failures)
+    for (const de of allDeadEnds.filter((d) => d.confidence !== 'low').slice(0, 5)) {
+      const item = {
         id: de.id,
-        title: de.title,
-        approach: de.approach,
-        whyFailed: de.whyFailed,
-        retryConditions: de.retryConditions,
+        title: de.title.slice(0, 80),
+        approach: de.approach.slice(0, 120),
+        whyFailed: de.whyFailed.slice(0, 140),
+        retryConditions: de.retryConditions.slice(0, 140),
         affectsModules: de.affectsModules,
-      }));
+      };
+      const cost = JSON.stringify(item).length;
+      if (currentChars + cost <= maxChars) {
+        recentDeadEnds.push(item);
+        currentChars += cost;
+      }
+    }
 
-    // Recent RCAs (top 3 high/medium confidence)
-    const recentRCAs = allRCAs
-      .filter((r) => r.confidence !== 'low')
-      .slice(-3)
-      .map((r) => ({
+    // 2. Add active non-superseded decisions
+    for (const d of allDecisions.filter((x) => x.status === 'active' && x.confidence !== 'low' && !x.supersededBy)) {
+      const item = {
+        id: d.id,
+        title: d.title.slice(0, 80),
+        choice: d.choice.slice(0, 180),
+        affectsModules: d.affectsModules,
+      };
+      const cost = JSON.stringify(item).length;
+      if (currentChars + cost <= maxChars) {
+        activeDecisions.push(item);
+        currentChars += cost;
+      }
+    }
+
+    // 3. Add recent RCAs if budget remains
+    for (const r of allRCAs.filter((x) => x.confidence !== 'low').slice(-3).reverse()) {
+      const item = {
         id: r.id,
-        title: r.title,
-        incident: r.incident.slice(0, 150),
-        resolution: r.resolution.slice(0, 150),
-      }));
+        title: r.title.slice(0, 80),
+        incident: r.incident.slice(0, 120),
+        resolution: r.resolution.slice(0, 120),
+      };
+      const cost = JSON.stringify(item).length;
+      if (currentChars + cost <= maxChars) {
+        recentRCAs.push(item);
+        currentChars += cost;
+      }
+    }
 
-    // Calculate approximate token count (~4 characters per token)
-    const rawLength =
-      JSON.stringify(activeDecisions).length +
-      JSON.stringify(recentDeadEnds).length +
-      JSON.stringify(recentRCAs).length;
-    const estimatedTokens = Math.ceil(rawLength / 4);
+    const estimatedTokens = Math.ceil(currentChars / 4);
 
     this.storage.cache.setActiveContext({
       version: 1,

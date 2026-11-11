@@ -1,4 +1,5 @@
 import { StorageManager } from '../storage/index.js';
+import { TranscriptExtractor } from '../compiler/extractor.js';
 import { type Decision, type RCA, type DeadEnd } from '../types/schemas.js';
 
 export interface SearchRunlogParams {
@@ -400,55 +401,7 @@ export class RunlogMcpTools {
   }
 
   private refreshCacheFromWiki(storage: StorageManager): void {
-    const allDecisions = storage.wiki.listDecisions();
-    const allDeadEnds = storage.wiki.listDeadEnds();
-    const allRCAs = storage.wiki.listRCAs();
-
-    const activeDecisions = allDecisions
-      .filter((d) => d.status === 'active' && d.confidence !== 'low' && !d.supersededBy)
-      .slice(0, 10)
-      .map((d) => ({
-        id: d.id,
-        title: d.title,
-        choice: d.choice,
-        affectsModules: d.affectsModules,
-      }));
-
-    const recentDeadEnds = allDeadEnds
-      .filter((d) => d.confidence !== 'low')
-      .slice(0, 5)
-      .map((de) => ({
-        id: de.id,
-        title: de.title,
-        approach: de.approach,
-        whyFailed: de.whyFailed,
-        retryConditions: de.retryConditions,
-        affectsModules: de.affectsModules,
-      }));
-
-    const recentRCAs = allRCAs
-      .filter((r) => r.confidence !== 'low')
-      .slice(-3)
-      .map((r) => ({
-        id: r.id,
-        title: r.title,
-        incident: r.incident.slice(0, 150),
-        resolution: r.resolution.slice(0, 150),
-      }));
-
-    const rawLength =
-      JSON.stringify(activeDecisions).length +
-      JSON.stringify(recentDeadEnds).length +
-      JSON.stringify(recentRCAs).length;
-
-    storage.cache.setActiveContext({
-      version: 1,
-      lastUpdated: new Date().toISOString(),
-      activeDecisions,
-      recentDeadEnds,
-      recentRCAs,
-      estimatedTokens: Math.ceil(rawLength / 4),
-    });
+    new TranscriptExtractor(storage).refreshActiveContextCache();
   }
 
   private calculateMatchScore(text: string, tokens: string[]): number {
