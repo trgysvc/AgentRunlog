@@ -180,7 +180,7 @@ runlog init
 This immediately:
 - Creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`) and adds `.agentrunlog/raw/` to `.gitignore`.
 - Installs project-level hooks.
-- **Bootstraps Existing Codebase (`CodebaseScanner`):** Automatically scans your manifests (`package.json`, `pyproject.toml`, `pubspec.yaml`, etc.), existing documentation (`README.md`, `CLAUDE.md`), `git log` history, and source directories (`src/`, `app/`, `lib/`). Your agent immediately understands the entire project from day one!
+- **Bootstraps Existing Codebase (`CodebaseScanner` + `HistoryImporter`):** Automatically scans your manifests (`package.json`, `pyproject.toml`, `pubspec.yaml`, etc.), existing documentation (`README.md`, `CLAUDE.md`), `git log` history, source directories (`src/`, `app/`, `lib/`), **and past Antigravity / Claude Code conversation transcripts** (`~/.gemini/antigravity/brain/`, `~/.claude/projects/`). Your agent immediately understands past decisions, crashes, and architecture from day one!
 
 ### Step 2: Code Normally (Zero Effort — Fully Automatic)
 You **never** need to say *"save this"* or *"update memory"*. Simply talk to your AI agent and code naturally:
@@ -195,7 +195,7 @@ When you open a new chat tomorrow or switch between Claude Code, Antigravity, Cu
 
 ### Step 4: Maintenance & CLI Commands
 ```bash
-runlog scan      # Re-scan existing codebase (tech stack, git log, modules, docs)
+runlog scan [--alias name] # Scan existing codebase + past Antigravity/Claude conversations
 runlog status    # View active/superseded decisions, RCAs, dead ends, and token budget
 runlog compile   # Manually compile raw session transcripts into wiki pages
 runlog lint      # Audit wiki for stale file paths, missing retry conditions, or broken links

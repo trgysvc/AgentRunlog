@@ -209,16 +209,23 @@ export class LLMCompilerClient {
       const payload = e.payload || {};
       const promptText = String(payload.text || payload.prompt || payload.rawText || '');
 
-      // 1. Detect natural-language engineering decisions automatically
-      if (e.eventType === 'prompt_submit' && promptText.length > 10 && decisionSignalRegex.test(promptText)) {
+      // 1. Detect natural-language engineering decisions automatically (cap 5 per session)
+      if (
+        bundle.decisions.length < 5 &&
+        e.eventType === 'prompt_submit' &&
+        promptText.length > 10 &&
+        promptText.length < 500 &&
+        decisionSignalRegex.test(promptText)
+      ) {
+        const cleanSingleLine = promptText.replace(/\s+/g, ' ').trim();
         bundle.decisions.push({
           id: `DEC-${deterministicShortId(`${sessionId}:dec:${i}`)}`,
-          title: promptText.slice(0, 65).trim(),
+          title: cleanSingleLine.slice(0, 65),
           status: 'active',
           decidedBy: 'user',
           author: 'user',
-          context: `User directive captured automatically during session ${sessionId}`,
-          choice: promptText.trim(),
+          context: `User directive captured during session ${sessionId}`,
+          choice: cleanSingleLine.slice(0, 280),
           supersedes: [],
           supersededBy: null,
           affectsModules: [],

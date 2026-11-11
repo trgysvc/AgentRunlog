@@ -6,6 +6,7 @@ import { WikiLinter } from '../compiler/linter.js';
 import { WikiReindexer } from '../compiler/reindex.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
 import { CodebaseScanner } from '../compiler/scanner.js';
+import { HistoryImporter } from '../compiler/history-importer.js';
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { existsSync, readFileSync, appendFileSync, readdirSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
@@ -161,7 +162,7 @@ Usage:
         }
       }
 
-      // 4. Bootstrap existing codebase memory unless --no-scan is provided
+      // 4. Bootstrap existing codebase memory & past agent conversations unless --no-scan is provided
       if (!args.includes('--no-scan')) {
         console.log('🔎 Scanning existing codebase to bootstrap initial engineering memory...');
         const scanner = new CodebaseScanner(storage, process.cwd());
@@ -170,6 +171,21 @@ Usage:
         console.log(`   - Indexed Modules:   ${scanRes.indexedModules.length}`);
         console.log(`   - Decisions Created: ${scanRes.decisionsCreated}`);
         console.log(`   - Historical RCAs:   ${scanRes.rcasCreated}`);
+
+        console.log('📜 Importing past agent conversations (Antigravity / Claude Code)...');
+        const importer = new HistoryImporter(storage, process.cwd());
+        const importRes = importer.importProjectHistory();
+        console.log(`   - Antigravity sessions: ${importRes.antigravitySessionsImported}`);
+        console.log(`   - Claude Code sessions: ${importRes.claudeSessionsImported}`);
+        console.log(`   - Events imported:      ${importRes.totalEventsImported}`);
+
+        if (importRes.importedFiles.length > 0) {
+          const extractor = new TranscriptExtractor(storage, storage.config.compiler as any);
+          for (const f of importRes.importedFiles) {
+            await extractor.extractAndCompile(join(storage.paths.raw, f));
+          }
+          console.log('✨ Compiled imported conversations into wiki memory.');
+        }
       }
 
       console.log('\n🎉 AgentRunlog initialized successfully! Your coding agents now retain persistent memory.');
@@ -177,15 +193,32 @@ Usage:
     }
 
     case 'scan': {
-      console.log('🔎 Scanning existing codebase (Tech Stack, Modules, Docs, Git History)...');
+      console.log('🔎 Scanning existing codebase & past agent conversations...');
+      const aliasIdx = args.indexOf('--alias');
+      const aliases = aliasIdx !== -1 && args[aliasIdx + 1] ? args[aliasIdx + 1].split(',') : undefined;
+
       const scanner = new CodebaseScanner(storage, process.cwd());
       const res = scanner.scan();
-      console.log(`✅ Scan completed in ${res.durationMs}ms:`);
+      console.log(`✅ Codebase scan completed in ${res.durationMs}ms:`);
       console.log(`   - Tech Stacks:       ${res.detectedStacks.join(', ') || 'None detected'}`);
       console.log(`   - Indexed Modules:   ${res.indexedModules.length}`);
       console.log(`   - Decisions Saved:   ${res.decisionsCreated}`);
       console.log(`   - Historical RCAs:   ${res.rcasCreated}`);
-      console.log(`   - Activity Tasks:    ${res.tasksCreated}`);
+
+      const importer = new HistoryImporter(storage, process.cwd());
+      const importRes = importer.importProjectHistory({ aliases });
+      console.log(`📜 Past conversations imported:`);
+      console.log(`   - Antigravity sessions: ${importRes.antigravitySessionsImported}`);
+      console.log(`   - Claude Code sessions: ${importRes.claudeSessionsImported}`);
+      console.log(`   - Total events:         ${importRes.totalEventsImported}`);
+
+      if (importRes.importedFiles.length > 0) {
+        const extractor = new TranscriptExtractor(storage, storage.config.compiler as any);
+        for (const f of importRes.importedFiles) {
+          await extractor.extractAndCompile(join(storage.paths.raw, f));
+        }
+        console.log('✨ Compiled all imported transcripts into wiki & active_context.json!');
+      }
       break;
     }
 

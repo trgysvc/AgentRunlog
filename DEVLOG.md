@@ -236,6 +236,20 @@
   3. `git log` geçmişindeki son `fix:` commit'lerini tarihsel `RCA`, son commit'leri `Task` olarak derler.
   4. `README.md` / `CLAUDE.md` dokümanlarından proje özetini (gizli verileri temizleyerek) ekler ve `active_context.json` önbelleğini anında doldurur.
 
+---
+
+## [2026-11-11] — Faz 9: Geçmiş Ajan Konuşmalarını Tarama (`HistoryImporter`)
+
+### 1. Antigravity & Claude Code Geçmiş Konuşma İçe Aktarıcısı (`src/compiler/history-importer.ts`)
+- **Neden Yapıldı?**  
+  PRD'de belirtildiği üzere yalnızca kod dosyaları değil, ajanla proje geliştirilirken yapılmış geçmiş konuşmaların da taranması gerekiyordu; böylece hangi kararların alındığı, nelerin tutmadığı ve hangi hataların yaşandığı başlangıçtan itibaren bilinebilir.
+- **Ne Yapar?**  
+  `runlog init` ve `runlog scan [--alias isim]` çalıştığında:
+  1. Antigravity (`~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`) ve Claude Code (`~/.claude/projects/*/*.jsonl`) kayıtlarını tarar.
+  2. Proje klasör adı, `package.json` adı veya `--alias` ile eşleşen konuşmaları bulur (özyineleme koruması ile kendi iç çağrılarını eler).
+  3. Tüm veriyi `Sanitizer` üzerinden maskeleyerek `.agentrunlog/raw/session-import-*.jsonl` olarak kaydeder ve hemen `wiki/` + `active_context.json` içine derler.
+
+
 
 
 

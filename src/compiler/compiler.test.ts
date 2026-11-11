@@ -256,4 +256,47 @@ describe('Compiler & Linter Engine', () => {
     expect(cache?.activeDecisions.length).toBeGreaterThanOrEqual(2);
     expect(existsSync(join(storage.paths.wiki, 'modules', 'src_audio.md'))).toBe(true);
   });
+
+  it('HistoryImporter discovers and sanitizes past Antigravity and Claude Code transcripts', async () => {
+    const { writeFileSync, mkdirSync, readFileSync } = await import('node:fs');
+    const { HistoryImporter } = await import('./history-importer.js');
+
+    const mockAgDir = join(tempDir, 'mock_ag_brain');
+    const convLogDir = join(mockAgDir, 'conv-1234', '.system_generated', 'logs');
+    mkdirSync(convLogDir, { recursive: true });
+
+    writeFileSync(
+      join(convLogDir, 'transcript.jsonl'),
+      [
+        JSON.stringify({
+          type: 'USER_INPUT',
+          created_at: '2026-11-10T10:00:00Z',
+          content: '<USER_REQUEST>\nWorking on SonarAura: Lets use FastAPI instead of Flask with key sk-proj-12345678901234567890123456789012\n</USER_REQUEST>',
+        }),
+        JSON.stringify({
+          type: 'GENERIC',
+          created_at: '2026-11-10T10:01:00Z',
+          content: 'Command exited with code 1\nError: Port 8000 already in use',
+        }),
+      ].join('\n'),
+      'utf8'
+    );
+
+    const importer = new HistoryImporter(storage, tempDir);
+    const res = importer.importProjectHistory({
+      antigravityBrainDir: mockAgDir,
+      claudeProjectsDir: join(tempDir, 'nonexistent_claude'),
+      aliases: ['SonarAura'],
+    });
+
+    expect(res.antigravitySessionsImported).toBe(1);
+    expect(res.totalEventsImported).toBe(2);
+
+    const importedPath = join(storage.paths.raw, res.importedFiles[0]);
+    expect(existsSync(importedPath)).toBe(true);
+    const rawSaved = readFileSync(importedPath, 'utf8');
+    // Verify secret redaction before disk write (FR-12, NFR-01)
+    expect(rawSaved).not.toContain('sk-proj-12345678901234567890123456789012');
+    expect(rawSaved).toContain('[REDACTED:OPENAI_API_KEY:');
+  });
 });
