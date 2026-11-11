@@ -240,14 +240,18 @@
 
 ## [2026-11-11] — Faz 9: Geçmiş Ajan Konuşmalarını Tarama (`HistoryImporter`)
 
-### 1. Antigravity & Claude Code Geçmiş Konuşma İçe Aktarıcısı (`src/compiler/history-importer.ts`)
+### 1. 4 Platformun Tamamından Geçmiş Konuşma İçe Aktarıcısı (`src/compiler/history-importer.ts`)
 - **Neden Yapıldı?**  
-  PRD'de belirtildiği üzere yalnızca kod dosyaları değil, ajanla proje geliştirilirken yapılmış geçmiş konuşmaların da taranması gerekiyordu; böylece hangi kararların alındığı, nelerin tutmadığı ve hangi hataların yaşandığı başlangıçtan itibaren bilinebilir.
+  PRD'de belirtildiği üzere yalnızca kod dosyaları değil, desteklenen 4 platformun tamamında (Antigravity, Claude Code, Codex CLI, Cursor) yapılmış geçmiş konuşmaların da taranması gerekiyordu; böylece proje başından sonuna kadar kesintisiz takip edilebilsin.
 - **Ne Yapar?**  
   `runlog init` ve `runlog scan [--alias isim]` çalıştığında:
-  1. Antigravity (`~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`) ve Claude Code (`~/.claude/projects/*/*.jsonl`) kayıtlarını tarar.
-  2. Proje klasör adı, `package.json` adı veya `--alias` ile eşleşen konuşmaları bulur (özyineleme koruması ile kendi iç çağrılarını eler).
-  3. Tüm veriyi `Sanitizer` üzerinden maskeleyerek `.agentrunlog/raw/session-import-*.jsonl` olarak kaydeder ve hemen `wiki/` + `active_context.json` içine derler.
+  1. **Antigravity:** `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`
+  2. **Claude Code:** `~/.claude/projects/*/*.jsonl`
+  3. **Codex CLI:** `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+  4. **Cursor:** `~/.cursor/projects/*/agent-transcripts/*.jsonl` ve `Cursor/User/workspaceStorage/*/state.vscdb` (Node built-in `node:sqlite` üzerinden zero-dependency okuma)
+  kayıtlarını tarar.
+  5. Proje klasör adı, `package.json` adı veya `--alias` ile eşleşen oturumları bulur (özyineleme koruması ile kendi iç çağrılarını eler).
+  6. Tüm veriyi `Sanitizer` üzerinden maskeleyerek `.agentrunlog/raw/session-import-*.jsonl` olarak kaydeder ve sert 800-token tavanı (NFR-07) ile `wiki/` + `active_context.json` içine derler. Sonraki süreçlerde ise her 4 platformun hook adaptörleri + otonom MCP yazma araçları üzerinden akış baştan sona takip edilir.
 
 
 

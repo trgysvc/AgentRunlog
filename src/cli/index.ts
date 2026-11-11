@@ -172,11 +172,13 @@ Usage:
         console.log(`   - Decisions Created: ${scanRes.decisionsCreated}`);
         console.log(`   - Historical RCAs:   ${scanRes.rcasCreated}`);
 
-        console.log('📜 Importing past agent conversations (Antigravity / Claude Code)...');
+        console.log('📜 Importing past agent conversations (Antigravity / Claude / Codex / Cursor)...');
         const importer = new HistoryImporter(storage, process.cwd());
-        const importRes = importer.importProjectHistory();
+        const importRes = await importer.importProjectHistory();
         console.log(`   - Antigravity sessions: ${importRes.antigravitySessionsImported}`);
         console.log(`   - Claude Code sessions: ${importRes.claudeSessionsImported}`);
+        console.log(`   - Codex CLI sessions:   ${importRes.codexSessionsImported}`);
+        console.log(`   - Cursor sessions:      ${importRes.cursorSessionsImported}`);
         console.log(`   - Events imported:      ${importRes.totalEventsImported}`);
 
         if (importRes.importedFiles.length > 0) {
@@ -206,10 +208,12 @@ Usage:
       console.log(`   - Historical RCAs:   ${res.rcasCreated}`);
 
       const importer = new HistoryImporter(storage, process.cwd());
-      const importRes = importer.importProjectHistory({ aliases });
-      console.log(`📜 Past conversations imported:`);
+      const importRes = await importer.importProjectHistory({ aliases });
+      console.log(`📜 Past conversations imported (All 4 Platforms):`);
       console.log(`   - Antigravity sessions: ${importRes.antigravitySessionsImported}`);
       console.log(`   - Claude Code sessions: ${importRes.claudeSessionsImported}`);
+      console.log(`   - Codex CLI sessions:   ${importRes.codexSessionsImported}`);
+      console.log(`   - Cursor sessions:      ${importRes.cursorSessionsImported}`);
       console.log(`   - Total events:         ${importRes.totalEventsImported}`);
 
       if (importRes.importedFiles.length > 0) {

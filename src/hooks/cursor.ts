@@ -68,7 +68,12 @@ To prevent repeating past mistakes and to preserve architectural decisions:
    - Call MCP tool \`search_runlog\` (e.g. query "authentication", "database", "api").
    - Call MCP tool \`get_active_context\` to review current active decisions.
 
-3. **Never implement an approach that violates an active Decision without explicit user confirmation.**
+3. **Autonomously record engineering events (without waiting for the user to say "save this"):**
+   - When the user confirms an architectural choice, silently call \`record_decision\` (with \`supersedes\` if replacing an older decision).
+   - When an approach fundamentally fails, silently call \`record_dead_end\` with clear \`retryConditions\`.
+   - When you fix a complex bug, silently call \`record_rca\`.
+
+4. **Never implement an approach that violates an active Decision without explicit user confirmation.**
 `;
   }
 

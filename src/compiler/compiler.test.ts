@@ -257,14 +257,14 @@ describe('Compiler & Linter Engine', () => {
     expect(existsSync(join(storage.paths.wiki, 'modules', 'src_audio.md'))).toBe(true);
   });
 
-  it('HistoryImporter discovers and sanitizes past Antigravity and Claude Code transcripts', async () => {
+  it('HistoryImporter discovers and sanitizes past transcripts across ALL 4 platforms', async () => {
     const { writeFileSync, mkdirSync, readFileSync } = await import('node:fs');
     const { HistoryImporter } = await import('./history-importer.js');
 
+    // 1. Mock Antigravity transcript
     const mockAgDir = join(tempDir, 'mock_ag_brain');
     const convLogDir = join(mockAgDir, 'conv-1234', '.system_generated', 'logs');
     mkdirSync(convLogDir, { recursive: true });
-
     writeFileSync(
       join(convLogDir, 'transcript.jsonl'),
       [
@@ -282,20 +282,62 @@ describe('Compiler & Linter Engine', () => {
       'utf8'
     );
 
+    // 2. Mock Claude Code transcript
+    const mockClaudeDir = join(tempDir, 'mock_claude_proj', '-sonaraura');
+    mkdirSync(mockClaudeDir, { recursive: true });
+    writeFileSync(
+      join(mockClaudeDir, 'sess-claude-99.jsonl'),
+      JSON.stringify({
+        type: 'user',
+        timestamp: '2026-11-10T11:00:00Z',
+        message: { content: 'SonarAura audio engine decision: use WebAudio API' },
+      }),
+      'utf8'
+    );
+
+    // 3. Mock Codex CLI transcript
+    const mockCodexDir = join(tempDir, 'mock_codex_sessions', '2026', '11', '10');
+    mkdirSync(mockCodexDir, { recursive: true });
+    writeFileSync(
+      join(mockCodexDir, 'rollout-2026-11-10T12-00-00-abc123.jsonl'),
+      JSON.stringify({
+        timestamp: '2026-11-10T12:00:00Z',
+        payload: { type: 'user_message', message: 'SonarAura codex test: use Vitest' },
+      }),
+      'utf8'
+    );
+
+    // 4. Mock Cursor agent transcript
+    const mockCursorDir = join(tempDir, 'mock_cursor_proj', 'sonaraura', 'agent-transcripts');
+    mkdirSync(mockCursorDir, { recursive: true });
+    writeFileSync(
+      join(mockCursorDir, 'cursor-sess-1.jsonl'),
+      JSON.stringify({
+        role: 'user',
+        timestamp: '2026-11-10T13:00:00Z',
+        content: 'SonarAura UI: adopt Tailwind CSS',
+      }),
+      'utf8'
+    );
+
     const importer = new HistoryImporter(storage, tempDir);
-    const res = importer.importProjectHistory({
+    const res = await importer.importProjectHistory({
       antigravityBrainDir: mockAgDir,
-      claudeProjectsDir: join(tempDir, 'nonexistent_claude'),
+      claudeProjectsDir: join(tempDir, 'mock_claude_proj'),
+      codexSessionsDir: join(tempDir, 'mock_codex_sessions'),
+      cursorProjectsDir: join(tempDir, 'mock_cursor_proj'),
+      cursorWorkspaceStorageDir: join(tempDir, 'nonexistent_ws'),
       aliases: ['SonarAura'],
     });
 
     expect(res.antigravitySessionsImported).toBe(1);
-    expect(res.totalEventsImported).toBe(2);
+    expect(res.claudeSessionsImported).toBe(1);
+    expect(res.codexSessionsImported).toBe(1);
+    expect(res.cursorSessionsImported).toBe(1);
+    expect(res.totalEventsImported).toBe(5);
 
-    const importedPath = join(storage.paths.raw, res.importedFiles[0]);
-    expect(existsSync(importedPath)).toBe(true);
-    const rawSaved = readFileSync(importedPath, 'utf8');
-    // Verify secret redaction before disk write (FR-12, NFR-01)
+    const agPath = join(storage.paths.raw, res.importedFiles[0]);
+    const rawSaved = readFileSync(agPath, 'utf8');
     expect(rawSaved).not.toContain('sk-proj-12345678901234567890123456789012');
     expect(rawSaved).toContain('[REDACTED:OPENAI_API_KEY:');
   });
