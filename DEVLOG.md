@@ -150,5 +150,30 @@
   7. Linter hafızayı tarar -> 0 hata ile geçer.
   8. `WikiReindexer` çalıştırılır -> Ham transkriptlerden tüm hafıza sıfırdan geri kazanılır (NFR-10).
 
-- **Nihai Doğrulama:** 6 test dosyasında **24 birim ve entegrasyon testinin tamamı başarıyla geçti (`24 passed`)**.
+- **Nihai Doğrulama:** 6 test dosyasında **26 birim ve entegrasyon testinin tamamı başarıyla geçti (`26 passed`)**.
+
+---
+
+## [2026-11-11] — Faz 6: Canlı Üretim Hazırlığı ve 5 Somut Eksiğin Tamamlanması
+
+### 1. Gerçek LLM İstemcisi ve `runlog compile` Motoru (`src/compiler/llm-client.ts`)
+- **Neden Yapıldı?**  
+  Ham transkriptlerin gerçek bir LLM (Anthropic Claude 3.5 Haiku, OpenAI gpt-4o-mini, Gemini 1.5 Flash veya yerel Ollama) tarafından analiz edilip Zod tiplerine dönüştürülmesi için native `fetch` tabanlı çoklu sağlayıcı istemcisi yazıldı.
+- **Ek Özellik:** API anahtarı olmadığında veya offline çalışıldığında geliştiriciyi yarı yolda bırakmayan `heuristicFallbackExtract` kural motoru eklendi.
+
+### 2. Hook `stdin` Yakalama ve Detached Worker (`src/hooks/runner.ts`)
+- **Neden Yapıldı (NFR-05, NFR-06, NFR-09)?**  
+  Gerçek dünyada Claude Code, Cursor ve Antigravity hook verilerini `process.stdin` üzerinden JSON olarak verir. Non-blocking < 15ms `stdin` okuyucu kuruldu.
+- `session-end`, `stop` veya `pre-compact` anında derleyici worker `spawn(..., { detached: true })` ve `AGENTRUNLOG_INTERNAL=1` bayrağı ile arka plana devredildi. Böylece ajanın terminali asla kilitlenmez.
+
+### 3. Otomatik `wiki/index.md` ve Modül Sayfaları (FR-08)
+- **Neden Yapıldı?**  
+  Her derlemede `wiki/index.md` (Karpathy Wiki ana haritası) ve `affectsModules` etiketli her dosya yolu için `wiki/modules/<slug>.md` sayfaları otomatik üretilmeye başlandı.
+
+### 4. CLI İyileştirmeleri ve Executable Yetkisi
+- `dist/cli/index.js` dosyasına `chmod +x` yetkisi verildi.
+- `runlog compile [session]` komutu CLI'a entegre edildi.
+
+- **Nihai Test Durumu:** 6 test dosyasında 26 birim ve entegrasyon testinin tamamı yeşil (`26 passed`).
+
 

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import matter from 'gray-matter';
 import {
@@ -15,11 +15,20 @@ import {
 } from '../types/schemas.js';
 import { type StoragePaths } from './paths.js';
 
+function toModuleSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
 export class WikiManager {
   private paths: StoragePaths;
+  private modulesDir: string;
 
   constructor(paths: StoragePaths) {
     this.paths = paths;
+    this.modulesDir = join(paths.wiki, 'modules');
+    if (!existsSync(this.modulesDir)) {
+      mkdirSync(this.modulesDir, { recursive: true });
+    }
   }
 
   /**
@@ -127,5 +136,112 @@ export class WikiManager {
     const filePath = join(this.paths.runs, `${valid.id}.md`);
     const content = `## Command\n\`\`\`bash\n${valid.command}\n\`\`\`\n\n## Exit Code: ${valid.exitCode}\n\n## Summary\n${valid.summary}`;
     this.atomicWriteMarkdown(filePath, valid as unknown as Record<string, unknown>, content);
+  }
+
+  /**
+   * Generates wiki/index.md and module-based context pages wiki/modules/*.md (FR-08)
+   */
+  public generateIndexAndModules(): void {
+    const decisions = this.listDecisions();
+    const deadEnds = this.listDeadEnds();
+    const rcas = this.listRCAs();
+
+    // 1. Group records by module
+    const moduleMap = new Map<string, { decisions: Decision[]; deadEnds: DeadEnd[]; rcas: RCA[] }>();
+
+    for (const dec of decisions) {
+      for (const mod of dec.affectsModules) {
+        const entry = moduleMap.get(mod) || { decisions: [], deadEnds: [], rcas: [] };
+        entry.decisions.push(dec);
+        moduleMap.set(mod, entry);
+      }
+    }
+
+    for (const de of deadEnds) {
+      for (const mod of de.affectsModules) {
+        const entry = moduleMap.get(mod) || { decisions: [], deadEnds: [], rcas: [] };
+        entry.deadEnds.push(de);
+        moduleMap.set(mod, entry);
+      }
+    }
+
+    for (const rca of rcas) {
+      for (const f of rca.affectsFiles) {
+        const entry = moduleMap.get(f) || { decisions: [], deadEnds: [], rcas: [] };
+        entry.rcas.push(rca);
+        moduleMap.set(f, entry);
+      }
+    }
+
+    // 2. Generate wiki/modules/*.md files (FR-08)
+    for (const [moduleName, items] of moduleMap.entries()) {
+      const slug = toModuleSlug(moduleName);
+      const modulePath = join(this.modulesDir, `${slug}.md`);
+
+      const lines: string[] = [
+        `# Module Memory: \`${moduleName}\`\n`,
+        `> Auto-generated engineering context by AgentRunlog (FR-08)\n`,
+      ];
+
+      if (items.decisions.length > 0) {
+        lines.push('## Active Decisions');
+        for (const d of items.decisions) {
+          lines.push(`- **[${d.id}](../decisions/${d.id}.md)**: ${d.title} (${d.status}) - Choice: ${d.choice}`);
+        }
+        lines.push('');
+      }
+
+      if (items.deadEnds.length > 0) {
+        lines.push('## Known Dead Ends');
+        for (const de of items.deadEnds) {
+          lines.push(`- **[${de.id}](../dead-ends/${de.id}.md)**: ${de.title} - Failed: ${de.whyFailed} (Retry: ${de.retryConditions})`);
+        }
+        lines.push('');
+      }
+
+      if (items.rcas.length > 0) {
+        lines.push('## Root Cause Analyses (RCA)');
+        for (const r of items.rcas) {
+          lines.push(`- **[${r.id}](../rca/${r.id}.md)**: ${r.title} - Resolution: ${r.resolution}`);
+        }
+        lines.push('');
+      }
+
+      writeFileSync(modulePath, lines.join('\n'), 'utf8');
+    }
+
+    // 3. Generate main wiki/index.md
+    const activeDecisions = decisions.filter((d) => d.status === 'active');
+    const indexContent: string[] = [
+      '# AgentRunlog Engineering Memory Wiki 🧠',
+      '\n> Compiled knowledge base following Andrej Karpathy\'s LLM Wiki pattern.\n',
+      '## Overview',
+      `- **Active Decisions:** ${activeDecisions.length}`,
+      `- **Superseded Decisions:** ${decisions.filter((d) => d.status === 'superseded').length}`,
+      `- **Known Dead Ends:** ${deadEnds.length}`,
+      `- **Root Cause Analyses:** ${rcas.length}`,
+      `- **Indexed Modules:** ${moduleMap.size}\n`,
+      '## Active Decisions Index',
+      '| ID | Title | Decided By | Affected Modules |',
+      '| :--- | :--- | :--- | :--- |',
+      ...activeDecisions.map(
+        (d) => `| [${d.id}](decisions/${d.id}.md) | ${d.title} | ${d.decidedBy} | \`${d.affectsModules.join(', ') || 'Global'}\` |`
+      ),
+      '\n## Known Dead Ends (Soft Guardrail)',
+      '| ID | Title | Why Failed | Retry Conditions |',
+      '| :--- | :--- | :--- | :--- |',
+      ...deadEnds.map(
+        (de) => `| [${de.id}](dead-ends/${de.id}.md) | ${de.title} | ${de.whyFailed} | ${de.retryConditions} |`
+      ),
+      '\n## Module Context Directory (FR-08)',
+      ...Array.from(moduleMap.keys()).map((m) => {
+        const slug = toModuleSlug(m);
+        return `- [\`${m}\`](modules/${slug}.md)`;
+      }),
+      '\n---',
+      `*Last compiled: ${new Date().toISOString()} by AgentRunlog Compiler*`,
+    ];
+
+    writeFileSync(this.paths.wikiIndex, indexContent.join('\n'), 'utf8');
   }
 }

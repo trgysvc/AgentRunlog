@@ -2,24 +2,28 @@ import { ClaudeCodeHookAdapter } from './claude-code.js';
 import { AntigravityHookAdapter } from './antigravity.js';
 import { CursorHookAdapter } from './cursor.js';
 import { CodexHookAdapter } from './codex.js';
+import { HookRunner } from './runner.js';
 import { type StorageManager } from '../storage/index.js';
 
 export * from './claude-code.js';
 export * from './antigravity.js';
 export * from './cursor.js';
 export * from './codex.js';
+export * from './runner.js';
 
 export class HookManager {
   public claude: ClaudeCodeHookAdapter;
   public antigravity: AntigravityHookAdapter;
   public cursor: CursorHookAdapter;
   public codex: CodexHookAdapter;
+  public runner: HookRunner;
 
   constructor(storage: StorageManager) {
     this.claude = new ClaudeCodeHookAdapter(storage);
     this.antigravity = new AntigravityHookAdapter(storage);
     this.cursor = new CursorHookAdapter(storage);
     this.codex = new CodexHookAdapter(storage);
+    this.runner = new HookRunner(storage, this);
   }
 
   /**

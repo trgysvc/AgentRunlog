@@ -99,4 +99,23 @@ describe('Platform Hook Adapters (Claude Code, Antigravity, Cursor, Codex)', () 
     expect(existsSync(installed.codex as string)).toBe(true);
     expect(existsSync((installed.cursor as any).hooksPath)).toBe(true);
   });
+
+  it('HookRunner dispatches events and respects AGENTRUNLOG_INTERNAL recursion shield', async () => {
+    const push = await hooks.runner.runHook({
+      platform: 'claude',
+      event: 'session-start',
+      sessionId: 'sess_runner_test',
+    });
+    expect(push).toContain('DEC-001');
+
+    // Recursion shield test (NFR-09)
+    process.env.AGENTRUNLOG_INTERNAL = '1';
+    const blockedPush = await hooks.runner.runHook({
+      platform: 'claude',
+      event: 'session-start',
+      sessionId: 'sess_runner_recursion',
+    });
+    delete process.env.AGENTRUNLOG_INTERNAL;
+    expect(blockedPush).toBeNull();
+  });
 });

@@ -11,6 +11,7 @@ import {
   type RawSessionEvent,
 } from '../types/schemas.js';
 import { type StorageManager } from '../storage/index.js';
+import { LLMCompilerClient, type LLMClientConfig } from './llm-client.js';
 
 export interface ExtractedBundle {
   decisions: Decision[];
@@ -19,18 +20,15 @@ export interface ExtractedBundle {
   tasks: Task[];
 }
 
-export interface CompilerOptions {
-  apiKey?: string;
-  endpoint?: string;
-  model?: string;
-  provider?: 'local' | 'cloud' | 'rule_based';
-}
+export interface CompilerOptions extends LLMClientConfig {}
 
 export class TranscriptExtractor {
   private storage: StorageManager;
+  private llmClient: LLMCompilerClient;
 
-  constructor(storage: StorageManager) {
+  constructor(storage: StorageManager, options: CompilerOptions = {}) {
     this.storage = storage;
+    this.llmClient = new LLMCompilerClient(options);
   }
 
   /**
@@ -79,7 +77,22 @@ ${formattedEvents}
   }
 
   /**
-   * Compiles session events and updates wiki and active context cache
+   * Extracts typed records using the LLM client (or heuristic fallback) and compiles them.
+   */
+  public async extractAndCompile(sessionFilePath: string): Promise<ExtractedBundle> {
+    const events = this.readSessionEvents(sessionFilePath);
+    if (events.length === 0) {
+      return { decisions: [], rcas: [], deadEnds: [], tasks: [] };
+    }
+
+    const prompt = this.buildCompilerPrompt(events);
+    const bundle = await this.llmClient.extract(prompt, events);
+    this.compileSession(sessionFilePath, bundle);
+    return bundle;
+  }
+
+  /**
+   * Compiles session events and updates wiki, module pages, index.md and active context cache
    */
   public compileSession(sessionFilePath: string, bundle: ExtractedBundle): void {
     // 1. Save all decisions and handle supersedes (FR-07)
@@ -124,7 +137,10 @@ ${formattedEvents}
       }
     }
 
-    // 5. Regenerate Pre-compiled Context Cache (FR-19, NFR-07)
+    // 5. Generate wiki/index.md and wiki/modules/*.md (FR-08)
+    this.storage.wiki.generateIndexAndModules();
+
+    // 6. Regenerate Pre-compiled Context Cache (FR-19, NFR-07)
     this.refreshActiveContextCache();
   }
 

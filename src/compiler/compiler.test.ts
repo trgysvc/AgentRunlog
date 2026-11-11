@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rmSync, existsSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { StorageManager } from '../storage/index.js';
@@ -136,6 +136,45 @@ describe('Compiler & Linter Engine', () => {
     expect(cache?.activeDecisions.length).toBe(1);
     expect(cache?.activeDecisions[0].id).toBe('DEC-002');
     expect(cache?.recentDeadEnds.length).toBe(1);
+
+    // Check wiki/index.md and module markdown pages are generated (FR-08)
+    expect(existsSync(storage.paths.wikiIndex)).toBe(true);
+    const indexContent = readFileSync(storage.paths.wikiIndex, 'utf8');
+    expect(indexContent).toContain('DEC-002');
+    expect(indexContent).toContain('Migrate to Markdown Wiki');
+    expect(indexContent).toContain('Module Context Directory');
+
+    const moduleFile = join(storage.paths.wiki, 'modules', 'src_storage.md');
+    expect(existsSync(moduleFile)).toBe(true);
+  });
+
+  it('LLMCompilerClient strips markdown fences and provides heuristic fallback', async () => {
+    const { LLMCompilerClient } = await import('./llm-client.js');
+    const client = new LLMCompilerClient({ provider: 'heuristic' });
+
+    const parsed = client.parseJSONBundle('```json\n{"decisions": [], "rcas": [], "deadEnds": [], "tasks": []}\n```');
+    expect(parsed.decisions).toEqual([]);
+
+    const fallback = await client.extract('dummy', [
+      {
+        sessionId: 'sess_fallback',
+        platform: 'claude_code',
+        eventType: 'prompt_submit',
+        timestamp: new Date().toISOString(),
+        payload: { text: 'Fix broken build script' },
+      },
+      {
+        sessionId: 'sess_fallback',
+        platform: 'claude_code',
+        eventType: 'post_tool_use',
+        timestamp: new Date().toISOString(),
+        payload: { command: 'npm run build', exitCode: 1, error: 'TS2304 error' },
+      },
+    ]);
+
+    expect(fallback.tasks.length).toBe(1);
+    expect(fallback.rcas.length).toBe(1);
+    expect(fallback.rcas[0].incident).toContain('TS2304');
   });
 
   it('reindexer can reconstruct knowledge base from scratch (NFR-10)', () => {

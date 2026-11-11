@@ -4,18 +4,35 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StorageManager } from '../storage/index.js';
 import { WikiLinter } from '../compiler/linter.js';
 import { WikiReindexer } from '../compiler/reindex.js';
+import { TranscriptExtractor } from '../compiler/extractor.js';
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
-import { existsSync, readFileSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync, appendFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
 const command = args[0] || 'help';
 
-const storage = new StorageManager();
-const hooks = new HookManager(storage);
-
 async function main() {
+  if (command === 'help' || command === '--help' || command === '-h') {
+    console.log(`
+AgentRunlog CLI — Typed Engineering Memory for Coding Agents
+
+Usage:
+  runlog init [platform]    Initialize memory and install hooks (claude | antigravity | cursor | codex | all)
+  runlog compile [session]  Extract typed knowledge from session transcripts using LLM compiler
+  runlog status             Display memory statistics and active context cache size
+  runlog lint               Audit wiki for broken supersedes, stale references, and invalid records
+  runlog reindex            Rebuild wiki and cache from raw transcripts (NFR-10)
+  runlog mcp                Start Model Context Protocol (MCP) server over stdio
+  runlog hook <plt> <evt>   Execute platform hook event with stdin capture (< 20ms SLA)
+`);
+    return;
+  }
+
+  const storage = new StorageManager();
+  const hooks = new HookManager(storage);
+
   switch (command) {
     case 'init': {
       console.log('⚡ Initializing AgentRunlog in current project...');
@@ -26,7 +43,7 @@ async function main() {
       // 2. Install platform hooks
       const platformArg = args[1]?.toLowerCase();
       if (!platformArg || platformArg === 'all') {
-        const installed = hooks.installAll();
+        hooks.installAll();
         console.log('✅ Installed hooks for Claude Code (.claude/hooks.json)');
         console.log('✅ Installed hooks for Google Antigravity (.agents/hooks.json)');
         console.log('✅ Installed hooks & rules for Cursor (.cursor/hooks.json & .cursorrules)');
@@ -56,6 +73,46 @@ async function main() {
       }
 
       console.log('\n🎉 AgentRunlog initialized successfully! Your coding agents now retain persistent memory.');
+      break;
+    }
+
+    case 'compile': {
+      console.log('⚙️ Running AgentRunlog Compiler Worker...');
+      const targetSession = args[1];
+      const extractor = new TranscriptExtractor(storage, storage.config.compiler as any);
+
+      let filesToCompile: string[] = [];
+
+      if (targetSession && existsSync(targetSession)) {
+        filesToCompile = [targetSession];
+      } else if (existsSync(storage.paths.raw)) {
+        filesToCompile = readdirSync(storage.paths.raw)
+          .filter((f) => f.startsWith('session-') && f.endsWith('.jsonl'))
+          .map((f) => join(storage.paths.raw, f));
+      }
+
+      if (filesToCompile.length === 0) {
+        console.log('ℹ️ No raw session transcripts found to compile.');
+        break;
+      }
+
+      let totalDecisions = 0;
+      let totalRcas = 0;
+      let totalDeadEnds = 0;
+
+      for (const file of filesToCompile) {
+        console.log(`📄 Compiling session: ${file}...`);
+        const bundle = await extractor.extractAndCompile(file);
+        totalDecisions += bundle.decisions.length;
+        totalRcas += bundle.rcas.length;
+        totalDeadEnds += bundle.deadEnds.length;
+      }
+
+      console.log(`\n✨ Compilation complete:`);
+      console.log(`   - Decisions extracted: ${totalDecisions}`);
+      console.log(`   - RCAs extracted:      ${totalRcas}`);
+      console.log(`   - DeadEnds logged:     ${totalDeadEnds}`);
+      console.log(`   - Wiki Index:          ${storage.paths.wikiIndex}`);
       break;
     }
 
@@ -113,21 +170,19 @@ async function main() {
     }
 
     case 'hook': {
-      const platform = args[1]?.toLowerCase();
-      const event = args[2]?.toLowerCase();
-      const sessionId = args[3] || `sess_${Date.now()}`;
+      const platform = args[1] || 'claude';
+      const event = args[2] || 'session-start';
+      const sessionId = args[3];
 
-      if (platform === 'claude' && event === 'session-start') {
-        const push = hooks.claude.handleSessionStart(sessionId);
-        if (push) console.log(push);
-      } else if (platform === 'antigravity' && event === 'pre-invocation') {
-        const push = hooks.antigravity.handlePreInvocation(sessionId, 1);
-        if (push) console.log(push);
-      } else if (platform === 'cursor' && event === 'before-submit-prompt') {
-        hooks.cursor.handlePromptSubmit(sessionId);
-      } else if (platform === 'codex' && event === 'session-start') {
-        const push = hooks.codex.handleSessionStart(sessionId);
-        if (push) console.log(push);
+      const pushText = await hooks.runner.runHook({
+        platform,
+        event,
+        sessionId,
+        cliPath: process.argv[1],
+      });
+
+      if (pushText) {
+        process.stdout.write(pushText + '\n');
       }
       break;
     }
@@ -138,11 +193,12 @@ AgentRunlog CLI — Typed Engineering Memory for Coding Agents
 
 Usage:
   runlog init [platform]    Initialize memory and install hooks (claude | antigravity | cursor | codex | all)
+  runlog compile [session]  Extract typed knowledge from session transcripts using LLM compiler
   runlog status             Display memory statistics and active context cache size
   runlog lint               Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex            Rebuild wiki and cache from raw transcripts (NFR-10)
   runlog mcp                Start Model Context Protocol (MCP) server over stdio
-  runlog hook <plt> <evt>   Execute platform hook event (< 20ms latency SLA)
+  runlog hook <plt> <evt>   Execute platform hook event with stdin capture (< 20ms SLA)
 `);
       break;
   }
