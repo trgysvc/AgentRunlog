@@ -177,6 +177,41 @@ describe('Compiler & Linter Engine', () => {
     expect(fallback.rcas[0].incident).toContain('TS2304');
   });
 
+  it('heuristic extractor automatically detects decisions and repeated-failure dead ends without user prompts', async () => {
+    const { LLMCompilerClient } = await import('./llm-client.js');
+    const client = new LLMCompilerClient({ provider: 'heuristic' });
+
+    const bundle = await client.extract('dummy', [
+      {
+        sessionId: 'sess_auto',
+        platform: 'antigravity',
+        eventType: 'prompt_submit',
+        timestamp: new Date().toISOString(),
+        payload: { text: "Let's use Drizzle ORM instead of Prisma for Edge compatibility" },
+      },
+      {
+        sessionId: 'sess_auto',
+        platform: 'antigravity',
+        eventType: 'post_tool_use',
+        timestamp: new Date().toISOString(),
+        payload: { command: 'npx prisma generate', exitCode: 1, error: 'Binary size limit exceeded' },
+      },
+      {
+        sessionId: 'sess_auto',
+        platform: 'antigravity',
+        eventType: 'post_tool_use',
+        timestamp: new Date().toISOString(),
+        payload: { command: 'npx prisma generate', exitCode: 1, error: 'Binary size limit exceeded' },
+      },
+    ]);
+
+    expect(bundle.decisions.length).toBe(1);
+    expect(bundle.decisions[0].choice).toContain('Drizzle ORM');
+    expect(bundle.deadEnds.length).toBe(1);
+    expect(bundle.deadEnds[0].approach).toBe('npx prisma generate');
+    expect(bundle.deadEnds[0].whyFailed).toContain('Failed 2 times');
+  });
+
   it('reindexer can reconstruct knowledge base from scratch (NFR-10)', () => {
     // Log an event to raw
     storage.logger.logEvent({

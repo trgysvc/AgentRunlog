@@ -210,6 +210,19 @@
 
 - **Doğrulama:** 27/27 test yeşil (`27 passed`), Antigravity `lsrpc GetAllPlugins` doğrulamasından geçti.
 
+---
+
+## [2026-11-11] — Sıfır Çaba (Zero-Effort) Otomatik Yakalama ve Derleme İyileştirmesi
+
+### 1. "Kullanıcıya 'Kaydet' Dedirtmeme" Kuralı
+- **Neden Yapıldı?**  
+  Gerçek bir geliştirme sürecinde geliştirici her karar aldığında "bunu kaydet" demez ve unutur.
+- **Ne Değiştirildi?**
+  1. `HookRunner`: `pre-invocation`, `post-invocation`, `stop`, `session-end` dahil tüm platform olaylarında `stdin` payload'u otomatik ham günlüğe (`raw/`) yazılacak ve günlük oturum ID'si altında gruplanacak şekilde düzeltildi.
+  2. `LLMCompilerClient` (Offline Heuristic): Kullanıcı hiçbir komut vermeden sadece doğal sohbette karar cümlesi kurduğunda (*"Let's use X instead of Y"*, *"X yerine Y kullanalım"* vb.) bunu otomatik `Decision`, aynı komutta 2+ kez ardışık hata alındığında bunu otomatik `DeadEnd` olarak çıkaran akıllı kural motoru eklendi.
+  3. `rules/AGENTS.md`: Ajanın kullanıcının "kaydet" demesini beklemeden, otonom şekilde karar/RCA/çıkmaz sokak kaydetmesi zorunlu kılındı.
+
+
 
 
 

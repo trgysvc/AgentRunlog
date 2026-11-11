@@ -183,7 +183,11 @@ export class LLMCompilerClient {
 
   /**
    * Heuristic fallback when running completely offline without API keys.
-   * Scans events for command errors and exit codes to extract basic draft records.
+   * Automatically scans events for:
+   * - Natural language architectural decisions (FR-03)
+   * - Repeated consecutive failures -> DeadEnds (FR-05, FR-20)
+   * - Single tool crashes -> RCAs (FR-04)
+   * - Initial session prompt -> Tasks (FR-02)
    */
   public heuristicFallbackExtract(events: RawSessionEvent[]): ExtractedBundle {
     const bundle: ExtractedBundle = {
@@ -195,18 +199,57 @@ export class LLMCompilerClient {
 
     if (events.length === 0) return bundle;
     const sessionId = events[0].sessionId;
+    const failureCounts = new Map<string, { count: number; lastError: string; timestamp: string; turnIndex: number }>();
+
+    const decisionSignalRegex =
+      /\b(let'?s use|decided to|we will use|switch to|migrate to|instead of|adopt|use .+ over|kullanalım|kullanacağız|karar|yerine|geçelim|tercih)\b/i;
 
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
       const payload = e.payload || {};
+      const promptText = String(payload.text || payload.prompt || payload.rawText || '');
 
-      // Detect failed tool calls
-      if (e.eventType === 'post_tool_use' && (payload.error || payload.exitCode !== 0)) {
-        if (payload.exitCode && payload.exitCode !== 0) {
+      // 1. Detect natural-language engineering decisions automatically
+      if (e.eventType === 'prompt_submit' && promptText.length > 10 && decisionSignalRegex.test(promptText)) {
+        bundle.decisions.push({
+          id: `DEC-${deterministicShortId(`${sessionId}:dec:${i}`)}`,
+          title: promptText.slice(0, 65).trim(),
+          status: 'active',
+          decidedBy: 'user',
+          author: 'user',
+          context: `User directive captured automatically during session ${sessionId}`,
+          choice: promptText.trim(),
+          supersedes: [],
+          supersededBy: null,
+          affectsModules: [],
+          evidence: {
+            sessionId,
+            turnIndex: i + 1,
+            timestamp: e.timestamp,
+          },
+          confidence: 'medium',
+          createdAt: e.timestamp,
+          updatedAt: e.timestamp,
+        });
+      }
+
+      // 2. Detect failed tool calls & repeated dead-end failures
+      if (e.eventType === 'post_tool_use' && (payload.error || (payload.exitCode !== undefined && payload.exitCode !== 0))) {
+        const cmdKey = String(payload.command || payload.tool || 'Tool');
+        const errMsg = String(payload.error || `Exit code ${payload.exitCode}`);
+
+        const prev = failureCounts.get(cmdKey) || { count: 0, lastError: '', timestamp: e.timestamp, turnIndex: i + 1 };
+        prev.count += 1;
+        prev.lastError = errMsg;
+        prev.timestamp = e.timestamp;
+        prev.turnIndex = i + 1;
+        failureCounts.set(cmdKey, prev);
+
+        if (prev.count === 1) {
           bundle.rcas.push({
             id: `RCA-${deterministicShortId(`${sessionId}:rca:${i}`)}`,
-            title: `Command Failed: ${String(payload.command || payload.tool || 'Tool')}`,
-            incident: String(payload.error || `Exit code ${payload.exitCode}`),
+            title: `Command Failed: ${cmdKey}`,
+            incident: errMsg,
             rootCause: 'Command returned non-zero exit code during execution',
             resolution: 'Investigate error output and fix failing command arguments',
             preventativeActions: ['Check syntax and dependencies before execution'],
@@ -217,17 +260,17 @@ export class LLMCompilerClient {
               timestamp: e.timestamp,
             },
             confidence: 'medium',
-            createdAt: new Date().toISOString(),
+            createdAt: e.timestamp,
           });
         }
       }
 
-      // Detect task descriptions from initial prompt
-      if (e.eventType === 'prompt_submit' && payload.text && bundle.tasks.length === 0) {
+      // 3. Detect task descriptions from initial prompt
+      if (e.eventType === 'prompt_submit' && promptText && bundle.tasks.length === 0) {
         bundle.tasks.push({
           id: `TASK-${deterministicShortId(`${sessionId}:task:${i}`)}`,
-          title: String(payload.text).slice(0, 60),
-          summary: String(payload.text),
+          title: promptText.slice(0, 60),
+          summary: promptText,
           filesModified: [],
           status: 'completed',
           evidence: {
@@ -235,7 +278,29 @@ export class LLMCompilerClient {
             turnIndex: i + 1,
             timestamp: e.timestamp,
           },
-          createdAt: new Date().toISOString(),
+          createdAt: e.timestamp,
+        });
+      }
+    }
+
+    // Promote repeated failures (2+ failures on same command/tool) to a Soft Guardrail DeadEnd
+    for (const [cmdKey, stats] of failureCounts.entries()) {
+      if (stats.count >= 2) {
+        bundle.deadEnds.push({
+          id: `DEAD-${deterministicShortId(`${sessionId}:dead:${cmdKey}`)}`,
+          title: `Repeated Failure on ${cmdKey}`,
+          rootCauseType: 'incompatibility',
+          approach: cmdKey,
+          whyFailed: `Failed ${stats.count} times in session. Last error: ${stats.lastError}`,
+          retryConditions: 'Verify environment configuration, dependencies, or alternative command flags before retrying.',
+          affectsModules: [],
+          evidence: {
+            sessionId,
+            turnIndex: stats.turnIndex,
+            timestamp: stats.timestamp,
+          },
+          confidence: 'medium',
+          createdAt: stats.timestamp,
         });
       }
     }

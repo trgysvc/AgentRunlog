@@ -176,18 +176,16 @@ runlog init
 ```
 This creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`), adds `.agentrunlog/raw/` to `.gitignore`, and installs project-level hooks.
 
-### Step 2: Code Normally & Record Decisions Live
-As you work with your AI agent, you can speak naturally:
-- **Record a Decision:** *"We decided to use Drizzle ORM instead of Prisma for edge compatibility. Record this decision."*  
-  → The agent calls `record_decision`, creating `DEC-001.md` and updating `wiki/index.md`.
-- **Record a Dead End:** *"Prisma crashes in Edge Workers due to binary size limits. Note this as a dead end."*  
-  → The agent calls `record_dead_end` with explicit retry conditions.
-- **Automatic Failure Capture:** Whenever a command fails during tool execution, the hook silently captures the error (redacting any database passwords or API tokens) and `runlog compile` turns it into an **RCA** (`RCA-*.md`).
+### Step 2: Code Normally (Zero Effort — Fully Automatic)
+You **never** need to say *"save this"* or *"update memory"*. Simply talk to your AI agent and code naturally:
+- **Silent Capture & Secret Redaction:** Every prompt, tool run, and error is silently logged to `.agentrunlog/raw/` via hooks, with API keys and passwords stripped before hitting disk.
+- **Autonomous Live Recording:** When you naturally confirm a choice (*"Let's use Drizzle ORM instead of Prisma"*), the plugin rules instruct the agent to silently call `record_decision` in the background.
+- **Automatic Session Compilation:** When your session ends (`Stop` / `SessionEnd` / `PreCompact`), the detached background compiler automatically extracts Decisions, RCAs, and repeated-failure Dead Ends into `.agentrunlog/wiki/` and updates `active_context.json`.
 
 ### Step 3: Next Session (Automatic Memory Recall)
-When you open a new chat tomorrow or switch to another agent (e.g., from Claude Code to Antigravity):
+When you open a new chat tomorrow or switch between Claude Code, Antigravity, Cursor, and Codex:
 - **Push:** On the first turn, the hook injects active decisions, recent RCAs, and dead ends (< 800 tokens, < 20ms).
-- **Pull:** Ask the agent *"What do we know about the database error?"* or *"Check dead ends before modifying auth."* The agent queries `search_runlog` and `check_dead_ends` via MCP.
+- **Pull:** Before touching risky architecture, the agent automatically checks `check_dead_ends` and `search_runlog` via MCP so past mistakes are never repeated.
 
 ### Step 4: Maintenance & CLI Commands
 ```bash
