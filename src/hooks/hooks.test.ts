@@ -1,0 +1,102 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { rmSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { StorageManager } from '../storage/index.js';
+import { HookManager } from './index.js';
+
+describe('Platform Hook Adapters (Claude Code, Antigravity, Cursor, Codex)', () => {
+  let tempDir: string;
+  let storage: StorageManager;
+  let hooks: HookManager;
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `agentrunlog_hook_test_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+    storage = new StorageManager(tempDir);
+    hooks = new HookManager(storage);
+
+    // Seed active context cache for push tests
+    storage.cache.setActiveContext({
+      version: 1,
+      lastUpdated: new Date().toISOString(),
+      activeDecisions: [
+        {
+          id: 'DEC-001',
+          title: 'Use Zod for Validation',
+          choice: 'Adopt Zod across all schemas',
+          affectsModules: ['src/types/**'],
+        },
+      ],
+      recentDeadEnds: [
+        {
+          id: 'DEAD-001',
+          title: 'Direct in-hook LLM',
+          approach: 'Run LLM in synchronous hook',
+          whyFailed: 'Exceeded 20ms SLA latency',
+          retryConditions: 'Do not use unless sub-5ms local engine',
+          affectsModules: ['src/hooks/**'],
+        },
+      ],
+      estimatedTokens: 90,
+    });
+  });
+
+  afterEach(() => {
+    if (existsSync(tempDir)) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
+    }
+  });
+
+  it('Claude Code adapter handles session start with fast push injection', () => {
+    const push = hooks.claude.handleSessionStart('sess_claude_1');
+    expect(push).toContain('### 🧠 AgentRunlog Active Decisions:');
+    expect(push).toContain('DEC-001');
+    expect(push).toContain('DEAD-001');
+
+    // Verify raw session event was logged atomically
+    const rawFile = join(storage.paths.raw, 'session-sess_claude_1.jsonl');
+    expect(existsSync(rawFile)).toBe(true);
+    const content = readFileSync(rawFile, 'utf8');
+    expect(content).toContain('claude_code');
+    expect(content).toContain('session_start');
+  });
+
+  it('Antigravity adapter pushes context on initial invocation and logs turn', () => {
+    const push = hooks.antigravity.handlePreInvocation('sess_antigravity_1', 1);
+    expect(push).toContain('### 🧠 AgentRunlog Active Decisions:');
+    expect(push).toContain('DEC-001');
+
+    // Second invocation does not re-push context to avoid prompt flooding
+    const subsequent = hooks.antigravity.handlePreInvocation('sess_antigravity_1', 2);
+    expect(subsequent).toBeNull();
+  });
+
+  it('Cursor adapter generates hooks.json and .cursorrules fallback instructions (FR-14)', () => {
+    const installed = hooks.cursor.install(tempDir);
+    expect(existsSync(installed.hooksPath)).toBe(true);
+    expect(existsSync(installed.rulesPath)).toBe(true);
+
+    const rulesContent = readFileSync(installed.rulesPath, 'utf8');
+    expect(rulesContent).toContain('check_dead_ends');
+    expect(rulesContent).toContain('search_runlog');
+    expect(rulesContent).toContain('agentrunlog');
+  });
+
+  it('Codex CLI adapter generates manifest and handles session start', () => {
+    const push = hooks.codex.handleSessionStart('sess_codex_1');
+    expect(push).toContain('### 🧠 AgentRunlog Active Decisions:');
+
+    const manifestPath = hooks.codex.install(tempDir);
+    expect(existsSync(manifestPath)).toBe(true);
+  });
+
+  it('HookManager installs manifests for all 4 platforms', () => {
+    const installed = hooks.installAll(tempDir);
+    expect(existsSync(installed.claude as string)).toBe(true);
+    expect(existsSync(installed.antigravity as string)).toBe(true);
+    expect(existsSync(installed.codex as string)).toBe(true);
+    expect(existsSync((installed.cursor as any).hooksPath)).toBe(true);
+  });
+});
