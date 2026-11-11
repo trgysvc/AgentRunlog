@@ -1,0 +1,43 @@
+{
+  "name": "agentrunlog",
+  "version": "0.1.0",
+  "description": "Typed engineering memory and Karpathy LLM Wiki for coding agents (Claude Code, Antigravity, Cursor, Codex)",
+  "type": "module",
+  "bin": {
+    "agentrunlog": "./dist/cli/index.js",
+    "runlog": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai-agent",
+    "memory",
+    "llm-wiki",
+    "claude-code",
+    "antigravity",
+    "cursor",
+    "codex",
+    "mcp",
+    "developer-tools"
+  ],
+  "author": "Turgay Savacı",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.1.0",
+    "gray-matter": "^4.0.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
