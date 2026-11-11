@@ -5,6 +5,7 @@ import { StorageManager } from '../storage/index.js';
 import { WikiLinter } from '../compiler/linter.js';
 import { WikiReindexer } from '../compiler/reindex.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
+import { CodebaseScanner } from '../compiler/scanner.js';
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { existsSync, readFileSync, appendFileSync, readdirSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
@@ -22,7 +23,8 @@ AgentRunlog CLI — Typed Engineering Memory for Coding Agents
 
 Usage:
   runlog install-plugin <plt> Install native plugin bundle (antigravity | claude | cursor | codex)
-  runlog init [platform]      Initialize memory and project hooks (claude | antigravity | cursor | codex | all)
+  runlog init [platform]      Initialize memory, scan existing codebase, and install project hooks
+  runlog scan                 Scan existing codebase (stack, git log, modules, docs) into memory
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
@@ -127,7 +129,8 @@ Usage:
       console.log(`📁 Memory storage: ${storage.paths.root}`);
 
       // 2. Install platform hooks
-      const platformArg = args[1]?.toLowerCase();
+      const rawArg = args[1]?.toLowerCase();
+      const platformArg = rawArg && !rawArg.startsWith('--') ? rawArg : undefined;
       if (!platformArg || platformArg === 'all') {
         hooks.installAll();
         console.log('✅ Installed hooks for Claude Code (.claude/hooks.json)');
@@ -158,7 +161,31 @@ Usage:
         }
       }
 
+      // 4. Bootstrap existing codebase memory unless --no-scan is provided
+      if (!args.includes('--no-scan')) {
+        console.log('🔎 Scanning existing codebase to bootstrap initial engineering memory...');
+        const scanner = new CodebaseScanner(storage, process.cwd());
+        const scanRes = scanner.scan();
+        console.log(`   - Detected Stack(s): ${scanRes.detectedStacks.join(', ') || 'Generic'}`);
+        console.log(`   - Indexed Modules:   ${scanRes.indexedModules.length}`);
+        console.log(`   - Decisions Created: ${scanRes.decisionsCreated}`);
+        console.log(`   - Historical RCAs:   ${scanRes.rcasCreated}`);
+      }
+
       console.log('\n🎉 AgentRunlog initialized successfully! Your coding agents now retain persistent memory.');
+      break;
+    }
+
+    case 'scan': {
+      console.log('🔎 Scanning existing codebase (Tech Stack, Modules, Docs, Git History)...');
+      const scanner = new CodebaseScanner(storage, process.cwd());
+      const res = scanner.scan();
+      console.log(`✅ Scan completed in ${res.durationMs}ms:`);
+      console.log(`   - Tech Stacks:       ${res.detectedStacks.join(', ') || 'None detected'}`);
+      console.log(`   - Indexed Modules:   ${res.indexedModules.length}`);
+      console.log(`   - Decisions Saved:   ${res.decisionsCreated}`);
+      console.log(`   - Historical RCAs:   ${res.rcasCreated}`);
+      console.log(`   - Activity Tasks:    ${res.tasksCreated}`);
       break;
     }
 

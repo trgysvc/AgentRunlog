@@ -170,11 +170,14 @@ runlog init codex
 Once installed, **AgentRunlog works automatically in the background** without slowing down your workflow:
 
 ### Step 1: Initialize Your Repository (One-Time)
-Navigate to your project folder (e.g., `cd MyProject`) and run:
+Navigate to your project folder (even if the project is already halfway built!) and run:
 ```bash
 runlog init
 ```
-This creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`), adds `.agentrunlog/raw/` to `.gitignore`, and installs project-level hooks.
+This immediately:
+- Creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`) and adds `.agentrunlog/raw/` to `.gitignore`.
+- Installs project-level hooks.
+- **Bootstraps Existing Codebase (`CodebaseScanner`):** Automatically scans your manifests (`package.json`, `pyproject.toml`, `pubspec.yaml`, etc.), existing documentation (`README.md`, `CLAUDE.md`), `git log` history, and source directories (`src/`, `app/`, `lib/`). Your agent immediately understands the entire project from day one!
 
 ### Step 2: Code Normally (Zero Effort — Fully Automatic)
 You **never** need to say *"save this"* or *"update memory"*. Simply talk to your AI agent and code naturally:
@@ -189,6 +192,7 @@ When you open a new chat tomorrow or switch between Claude Code, Antigravity, Cu
 
 ### Step 4: Maintenance & CLI Commands
 ```bash
+runlog scan      # Re-scan existing codebase (tech stack, git log, modules, docs)
 runlog status    # View active/superseded decisions, RCAs, dead ends, and token budget
 runlog compile   # Manually compile raw session transcripts into wiki pages
 runlog lint      # Audit wiki for stale file paths, missing retry conditions, or broken links

@@ -226,4 +226,34 @@ describe('Compiler & Linter Engine', () => {
     expect(result.processedSessions).toBe(1);
     expect(existsSync(storage.paths.wiki)).toBe(true);
   });
+
+  it('CodebaseScanner bootstraps tech stack, modules, and docs for mid-project setup', async () => {
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    const { CodebaseScanner } = await import('./scanner.js');
+
+    writeFileSync(
+      join(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'sonaraura-web',
+        dependencies: { next: '15.0.0', react: '19.0.0', zod: '3.24.0' },
+        scripts: { dev: 'next dev', build: 'next build' },
+      }),
+      'utf8'
+    );
+    mkdirSync(join(tempDir, 'src', 'audio'), { recursive: true });
+    mkdirSync(join(tempDir, 'src', 'auth'), { recursive: true });
+    writeFileSync(join(tempDir, 'README.md'), '# SonarAura\nSpatial audio player and streaming architecture.', 'utf8');
+
+    const scanner = new CodebaseScanner(storage, tempDir);
+    const result = scanner.scan();
+
+    expect(result.detectedStacks).toContain('Node.js / JavaScript / TypeScript');
+    expect(result.indexedModules).toContain('src/audio/**');
+    expect(result.indexedModules).toContain('src/auth/**');
+    expect(result.decisionsCreated).toBeGreaterThanOrEqual(2);
+
+    const cache = storage.cache.getActiveContext();
+    expect(cache?.activeDecisions.length).toBeGreaterThanOrEqual(2);
+    expect(existsSync(join(storage.paths.wiki, 'modules', 'src_audio.md'))).toBe(true);
+  });
 });

@@ -222,6 +222,21 @@
   2. `LLMCompilerClient` (Offline Heuristic): Kullanıcı hiçbir komut vermeden sadece doğal sohbette karar cümlesi kurduğunda (*"Let's use X instead of Y"*, *"X yerine Y kullanalım"* vb.) bunu otomatik `Decision`, aynı komutta 2+ kez ardışık hata alındığında bunu otomatik `DeadEnd` olarak çıkaran akıllı kural motoru eklendi.
   3. `rules/AGENTS.md`: Ajanın kullanıcının "kaydet" demesini beklemeden, otonom şekilde karar/RCA/çıkmaz sokak kaydetmesi zorunlu kılındı.
 
+---
+
+## [2026-11-11] — Faz 8: Mevcut Projeler İçin Başlangıç Tarayıcısı (`CodebaseScanner`)
+
+### 1. Yarıda Başlanan Projelerde Geçmişi Tanıma (`src/compiler/scanner.ts`)
+- **Neden Yapıldı?**  
+  Bir geliştirici AgentRunlog'u sıfırdan yeni bir projeye değil, aylardır üzerinde çalıştığı yarıda bir projeye (ör. `AuraStream-APP` / `AuraStreamBE`) eklediğinde ajan projenin mevcut mimarisini baştan tanımalıdır.
+- **Ne Yapar?**  
+  `runlog init` (veya manuel `runlog scan`) çalıştığında:
+  1. Manifest dosyalarını (`package.json`, `pyproject.toml`, `pubspec.yaml`, `Cargo.toml`, `go.mod`, `Dockerfile`) tarayıp teknoloji yığınını `Decision` olarak kaydeder.
+  2. Kaynak dizinlerini (`src/`, `app/`, `lib/` vb.) analiz edip `wiki/modules/*.md` haritasını kurar.
+  3. `git log` geçmişindeki son `fix:` commit'lerini tarihsel `RCA`, son commit'leri `Task` olarak derler.
+  4. `README.md` / `CLAUDE.md` dokümanlarından proje özetini (gizli verileri temizleyerek) ekler ve `active_context.json` önbelleğini anında doldurur.
+
+
 
 
 
