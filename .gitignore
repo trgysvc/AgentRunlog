@@ -1,0 +1,21 @@
+# PRD Documents
+docs/*.pdf
+docs/*PRD*
+*PRD.pdf
+*prd.pdf
+
+# Agent Runlog local data
+.agentrunlog/raw/
+.runlog/raw/
+
+# Environment and secrets
+.env
+.env.local
+*.env
+
+# Dependencies & Build
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
