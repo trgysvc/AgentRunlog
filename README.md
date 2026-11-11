@@ -13,7 +13,7 @@
 ## 📌 Problem & Vision
 
 Across coding sessions, **context is lost**:
-- 🔄 **Re-invented wheels & reversed decisions**: The agent forgets why a architectural choice was made and reverts it.
+- 🔄 **Re-invented wheels & reversed decisions**: The agent forgets why an architectural choice was made and reverts it.
 - 🕳️ **Dead-end traps**: The agent repeatedly attempts failed solutions, debugging methods, or broken libraries.
 - 📉 **Wasted time & tokens**: Every session starts with an amnesic agent requiring manual context re-feeding.
 
@@ -82,17 +82,20 @@ Unlike generic semantic vector stores that dump unstructured text, AgentRunlog o
 
 ## 🔄 How It Works
 
-### 1. Push (Proactive Injection)
-When a new agent session starts or before a tool runs, AgentRunlog inspects the session context and automatically injects high-priority relevant facts:
-- Recent active decisions for the current module.
-- Dead ends to avoid for matching errors.
-- Token-budgeted and filtered by relevance to avoid context pollution.
+### 1. Push (Proactive Injection — `< 20ms` SLA)
+When a new agent session starts, AgentRunlog reads `.agentrunlog/cache/active_context.json` (`< 5ms`) and injects high-priority context:
+- Active architectural decisions (automatically excluding `superseded` ones).
+- Known dead ends with explicit `retryConditions` (Soft Guardrail — warns without blocking).
+- Recent root cause analyses (RCAs) for fast failure recall.
+- Strictly capped at **800 tokens** to prevent context pollution.
 
-### 2. Pull (MCP Server)
-Agents can actively query memory on demand using native MCP tools:
-- `search_runlog(query, types)`: Semantic & keyword search across decisions, RCAs, and dead ends.
-- `get_decision(decision_id)`: Retrieve full context, rationale, and superseded items.
-- `check_dead_ends(approach_description)`: Check if an intended path has already failed before.
+### 2. Pull & Live Record (MCP Server)
+Agents can actively query and record memory across workspaces (`projectRoot`) via native MCP tools:
+- `search_runlog(query, types, module)`: Keyword & module-filtered search across decisions, RCAs, and dead ends.
+- `get_decision(id)` / `get_rca(id)`: Retrieve full context, rationale, evidence, and supersede graph.
+- `check_dead_ends(approach, module)`: Non-blocking Soft Guardrail check with retry conditions.
+- `get_active_context()`: Instant pre-compiled project summary.
+- `record_decision` / `record_dead_end` / `record_rca`: Autonomous live recording during active conversations.
 
 ### 3. Periodic Linting
 A lightweight linter periodically scans the wiki:
@@ -203,15 +206,12 @@ runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR
 
 ## 🗺️ Roadmap & Status
 
-- [x] **Core Engine**: Typed record schemas (`schema.md`), disk storage layout, and sanitization filter.
-- [x] **MCP Server**: Fast local MCP server providing `search_runlog`, `get_decision`, `get_rca`, `check_dead_ends`, and `get_active_context`.
-- [x] **Capture Adapters**:
-  - [x] Claude Code hook adapter
-  - [x] Google Antigravity hook adapter
-  - [x] Cursor hook & rules adapter
-  - [x] Codex CLI hook adapter
-- [x] **Compiler Worker**: Zero-cost offline heuristic & multi-LLM transcript parser, `active_context.json` cache, and `wiki/index.md` builder.
-- [x] **Wiki Linter**: Conflict, broken supersede link, and staleness detection (`runlog lint` & `runlog reindex`).
+- [x] **Core Engine**: Typed record schemas (`schema.md`), atomic disk storage, and two-layer sanitization filter.
+- [x] **MCP Server**: Local stdio MCP server with read (`search_runlog`, `get_decision`, `get_rca`, `check_dead_ends`, `get_active_context`) and live write (`record_decision`, `record_dead_end`, `record_rca`) tools.
+- [x] **Native Plugin Bundles**: One-command Antigravity plugin installer (`runlog install-plugin`) and Claude Code plugin manifests.
+- [x] **Capture Adapters**: Hook adapters for Claude Code, Google Antigravity, Cursor (`.cursorrules` fallback), and Codex CLI.
+- [x] **Codebase Bootstrap Scanner**: Automatic project scan on `runlog init` / `runlog scan` for existing in-progress repos.
+- [x] **Compiler Worker & Linter**: Zero-cost offline heuristic & multi-LLM parser, `active_context.json` cache, `wiki/index.md` builder, `runlog lint`, and `runlog reindex`.
 
 ---
 
