@@ -1,6 +1,6 @@
 {
   "name": "agentrunlog",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed engineering memory and Karpathy LLM Wiki for coding agents (Claude Code, Antigravity, Cursor, Codex)",
   "type": "module",
   "bin": {
@@ -13,7 +13,15 @@
     "dist",
     "schema.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "plugin.json",
+    "mcp_config.json",
+    "hooks.json",
+    "rules",
+    "skills",
+    ".claude-plugin",
+    ".mcp.json",
+    "hooks"
   ],
   "scripts": {
     "build": "tsup",

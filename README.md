@@ -125,48 +125,76 @@ AgentRunlog makes an intentional architectural distinction between the **Working
 
 ---
 
-## 🚀 Quick Start & Installation
+## 🚀 Installation & Plugin Setup
 
-### 1. Install Globally (from GitHub or Release Tarball)
+AgentRunlog ships as a **Native Plugin Bundle** (containing `plugin.json`, `mcp_config.json`, `hooks.json`, `rules/`, and `skills/`).
+
+### 1. Install CLI & Plugin Bundle Globally from GitHub
 ```bash
-# Directly from GitHub
 npm install -g git+https://github.com/trgysvc/AgentRunlog.git
+```
+*(Or download the release tarball directly from [GitHub Releases](https://github.com/trgysvc/AgentRunlog/releases))*
 
-# Or from the latest GitHub Release tarball
-npm install -g https://github.com/trgysvc/AgentRunlog/releases/download/v0.1.0/agentrunlog-0.1.0.tgz
+### 2. Add to Your Coding Platform
+
+#### 🟣 Google Antigravity (Recommended — Native Plugin)
+Install the full plugin bundle (MCP + Hooks + Rules + Skill) into Antigravity with one command:
+```bash
+runlog install-plugin antigravity
+```
+*(Or clone directly: `git clone https://github.com/trgysvc/AgentRunlog.git ~/.gemini/config/plugins/agentrunlog`)*  
+Then toggle **AgentRunlog Memory** on in Antigravity's **Customizations → Plugins** tab.
+
+#### 🟠 Claude Code
+Inside any project, or as a plugin:
+```bash
+runlog init claude
+```
+And ensure `agentrunlog` is in your MCP config (`.mcp.json` is included in the repo).
+
+#### 🔵 Cursor
+```bash
+runlog init cursor
+```
+Installs `.cursor/hooks.json` and `.cursorrules` (which instructs Cursor to query `search_runlog` and `check_dead_ends` before major refactors). Add `agentrunlog` (`command: "runlog"`, `args: ["mcp"]`) in Cursor Settings → MCP.
+
+#### 🟢 Codex CLI
+```bash
+runlog init codex
 ```
 
-### 2. Initialize in Your Project
-Navigate to any coding repository and run:
+---
+
+## 🛠️ How to Use While Developing a Project (Daily Workflow)
+
+Once installed, **AgentRunlog works automatically in the background** without slowing down your workflow:
+
+### Step 1: Initialize Your Repository (One-Time)
+Navigate to your project folder (e.g., `cd MyProject`) and run:
 ```bash
 runlog init
 ```
-This automatically:
-- Creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`, `config.json`).
-- Adds `.agentrunlog/raw/` to `.gitignore` for privacy.
-- Installs hook adapters for **Claude Code**, **Google Antigravity**, **Cursor**, and **Codex CLI**.
+This creates `.agentrunlog/` (`raw/`, `wiki/`, `cache/`), adds `.agentrunlog/raw/` to `.gitignore`, and installs project-level hooks.
 
-### 3. Connect MCP Server to Your Agent
-Add `agentrunlog` to your agent's MCP configuration:
+### Step 2: Code Normally & Record Decisions Live
+As you work with your AI agent, you can speak naturally:
+- **Record a Decision:** *"We decided to use Drizzle ORM instead of Prisma for edge compatibility. Record this decision."*  
+  → The agent calls `record_decision`, creating `DEC-001.md` and updating `wiki/index.md`.
+- **Record a Dead End:** *"Prisma crashes in Edge Workers due to binary size limits. Note this as a dead end."*  
+  → The agent calls `record_dead_end` with explicit retry conditions.
+- **Automatic Failure Capture:** Whenever a command fails during tool execution, the hook silently captures the error (redacting any database passwords or API tokens) and `runlog compile` turns it into an **RCA** (`RCA-*.md`).
 
-**Google Antigravity (`~/.gemini/config/mcp_config.json`) / Claude Code / Cursor:**
-```json
-{
-  "mcpServers": {
-    "agentrunlog": {
-      "command": "runlog",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+### Step 3: Next Session (Automatic Memory Recall)
+When you open a new chat tomorrow or switch to another agent (e.g., from Claude Code to Antigravity):
+- **Push:** On the first turn, the hook injects active decisions, recent RCAs, and dead ends (< 800 tokens, < 20ms).
+- **Pull:** Ask the agent *"What do we know about the database error?"* or *"Check dead ends before modifying auth."* The agent queries `search_runlog` and `check_dead_ends` via MCP.
 
-### 4. Useful CLI Commands
+### Step 4: Maintenance & CLI Commands
 ```bash
-runlog status    # View active/superseded decisions, RCAs, and cache token budget
+runlog status    # View active/superseded decisions, RCAs, dead ends, and token budget
 runlog compile   # Manually compile raw session transcripts into wiki pages
-runlog lint      # Audit wiki for stale file references or broken supersedes links
-runlog reindex   # Rebuild the entire wiki and cache from raw transcripts (NFR-10)
+runlog lint      # Audit wiki for stale file paths, missing retry conditions, or broken links
+runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR-10)
 ```
 
 ---

@@ -1,0 +1,11 @@
+{
+  "name": "agentrunlog",
+  "version": "0.1.1",
+  "description": "Typed engineering memory & Karpathy LLM Wiki for Claude Code. Captures transcripts, sanitizes secrets, and provides Decisions, RCAs, and Dead Ends via Hooks and MCP.",
+  "author": {
+    "name": "Turgay Savacı",
+    "url": "https://github.com/trgysvc"
+  },
+  "repository": "https://github.com/trgysvc/AgentRunlog",
+  "license": "MIT"
+}

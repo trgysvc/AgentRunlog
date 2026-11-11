@@ -1,0 +1,29 @@
+{
+  "description": "AgentRunlog typed engineering memory hooks for Google Antigravity",
+  "hooks": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "runlog hook antigravity pre-invocation"
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "runlog hook antigravity post-invocation"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "runlog hook antigravity post-tool-use"
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "runlog hook antigravity stop"
+      }
+    ]
+  }
+}

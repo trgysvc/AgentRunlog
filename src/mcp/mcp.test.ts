@@ -121,4 +121,37 @@ describe('RunlogMcpTools', () => {
     expect(safe.hasKnownFailures).toBe(false);
     expect(safe.deadEnds.length).toBe(0);
   });
+
+  it('records live decisions, dead ends, and RCAs via MCP write tools', () => {
+    const newDec = tools.recordDecision({
+      title: 'Use Vitest over Jest',
+      context: 'ESM native support needed without complex babel configs',
+      choice: 'Adopt Vitest for unit and E2E testing',
+      supersedes: ['DEC-001'],
+      affectsModules: ['src/tests/**'],
+    });
+    expect(newDec.id).toBe('DEC-003');
+    expect(newDec.status).toBe('active');
+
+    // DEC-001 should now be superseded!
+    const oldDec = tools.getDecision('DEC-001');
+    expect(oldDec?.status).toBe('superseded');
+    expect(oldDec?.supersededBy).toBe('DEC-003');
+
+    const newDeadEnd = tools.recordDeadEnd({
+      title: 'Avoid Sync Hook Calls',
+      approach: 'Blocking HTTP call inside PreToolUse',
+      whyFailed: 'Stalled terminal input by 400ms',
+      retryConditions: 'Never retry synchronously; use detached worker',
+    });
+    expect(newDeadEnd.id).toBe('DEAD-002');
+
+    const newRca = tools.recordRCA({
+      title: 'Cache Miss on Startup',
+      incident: 'PreInvocation returned empty on first boot',
+      rootCause: 'active_context.json omitted recent RCAs',
+      resolution: 'Included recentRCAs in ActiveContextCacheSchema',
+    });
+    expect(newRca.id).toBe('RCA-002');
+  });
 });

@@ -1,0 +1,35 @@
+{
+  "description": "AgentRunlog typed engineering memory hooks for Claude Code",
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "runlog hook claude session-start"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "runlog hook claude prompt-submit"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "runlog hook claude post-tool-use"
+      }
+    ],
+    "PreCompact": [
+      {
+        "type": "command",
+        "command": "runlog hook claude pre-compact"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "type": "command",
+        "command": "runlog hook claude session-end"
+      }
+    ]
+  }
+}

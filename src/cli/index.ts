@@ -7,8 +7,10 @@ import { WikiReindexer } from '../compiler/reindex.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
-import { existsSync, readFileSync, appendFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, appendFileSync, readdirSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const command = args[0] || 'help';
@@ -19,14 +21,98 @@ async function main() {
 AgentRunlog CLI — Typed Engineering Memory for Coding Agents
 
 Usage:
-  runlog init [platform]    Initialize memory and install hooks (claude | antigravity | cursor | codex | all)
-  runlog compile [session]  Extract typed knowledge from session transcripts using LLM compiler
-  runlog status             Display memory statistics and active context cache size
-  runlog lint               Audit wiki for broken supersedes, stale references, and invalid records
-  runlog reindex            Rebuild wiki and cache from raw transcripts (NFR-10)
-  runlog mcp                Start Model Context Protocol (MCP) server over stdio
-  runlog hook <plt> <evt>   Execute platform hook event with stdin capture (< 20ms SLA)
+  runlog install-plugin <plt> Install native plugin bundle (antigravity | claude | cursor | codex)
+  runlog init [platform]      Initialize memory and project hooks (claude | antigravity | cursor | codex | all)
+  runlog compile [session]    Extract typed knowledge from session transcripts using compiler
+  runlog status               Display memory statistics and active context cache size
+  runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
+  runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
+  runlog mcp                  Start Model Context Protocol (MCP) server over stdio
+  runlog hook <plt> <evt>     Execute platform hook event with stdin capture (< 20ms SLA)
 `);
+    return;
+  }
+
+  if (command === 'install-plugin') {
+    const targetPlatform = (args[1] || 'antigravity').toLowerCase();
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const pkgRoot = resolve(__dirname, '../..');
+    const cliEntry = resolve(pkgRoot, 'dist/cli/index.js');
+    const nodeExec = process.execPath;
+
+    if (targetPlatform === 'antigravity') {
+      const pluginDir = join(homedir(), '.gemini', 'config', 'plugins', 'agentrunlog');
+      const rulesDir = join(pluginDir, 'rules');
+      const skillsDir = join(pluginDir, 'skills', 'agentrunlog');
+      mkdirSync(rulesDir, { recursive: true });
+      mkdirSync(skillsDir, { recursive: true });
+
+      // Copy plugin.json, rules/AGENTS.md, skills/agentrunlog/SKILL.md
+      for (const rel of ['plugin.json', 'rules/AGENTS.md', 'skills/agentrunlog/SKILL.md']) {
+        const srcPath = join(pkgRoot, rel);
+        const destPath = join(pluginDir, rel);
+        if (existsSync(srcPath)) copyFileSync(srcPath, destPath);
+      }
+
+      // Write mcp_config.json with absolute node + cli path for reliable GUI execution
+      writeFileSync(
+        join(pluginDir, 'mcp_config.json'),
+        JSON.stringify(
+          {
+            mcpServers: {
+              agentrunlog: {
+                command: nodeExec,
+                args: [cliEntry, 'mcp'],
+              },
+            },
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+
+      // Write hooks.json with absolute node + cli path
+      writeFileSync(
+        join(pluginDir, 'hooks.json'),
+        JSON.stringify(
+          {
+            description: 'AgentRunlog typed engineering memory hooks for Google Antigravity',
+            hooks: {
+              PreInvocation: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity pre-invocation` }],
+              PostInvocation: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity post-invocation` }],
+              PostToolUse: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity post-tool-use` }],
+              Stop: [{ type: 'command', command: `${nodeExec} ${cliEntry} hook antigravity stop` }],
+            },
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+
+      // Remove standalone agentrunlog entry from ~/.gemini/config/mcp_config.json to avoid global collision
+      const userMcpPath = join(homedir(), '.gemini', 'config', 'mcp_config.json');
+      if (existsSync(userMcpPath)) {
+        try {
+          const userMcp = JSON.parse(readFileSync(userMcpPath, 'utf8'));
+          if (userMcp?.mcpServers?.agentrunlog) {
+            delete userMcp.mcpServers.agentrunlog;
+            writeFileSync(userMcpPath, JSON.stringify(userMcp, null, 2), 'utf8');
+          }
+        } catch {}
+      }
+
+      console.log(`✅ Installed AgentRunlog native Antigravity plugin to:\n   ${pluginDir}`);
+      console.log(`   Includes: plugin.json, mcp_config.json, hooks.json, rules/AGENTS.md, skills/agentrunlog/SKILL.md`);
+      console.log(`\n🚀 Next step: Run "runlog init" in any project directory to initialize .agentrunlog/`);
+    } else if (targetPlatform === 'claude') {
+      console.log(`ℹ️ To install as a Claude Code plugin directly from GitHub:`);
+      console.log(`   claude plugin add https://github.com/trgysvc/AgentRunlog.git`);
+      console.log(`   Or inside any project: runlog init claude`);
+    } else {
+      console.log(`ℹ️ Run "runlog init ${targetPlatform}" inside your project directory to configure hooks & rules.`);
+    }
     return;
   }
 

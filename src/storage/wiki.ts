@@ -35,7 +35,9 @@ export class WikiManager {
    * Atomically writes markdown file with YAML frontmatter via temp file + rename.
    */
   private atomicWriteMarkdown(filePath: string, frontmatter: Record<string, unknown>, content: string): void {
-    const fileContent = matter.stringify(content, frontmatter);
+    // Strip undefined properties before js-yaml serialization
+    const cleanFrontmatter = JSON.parse(JSON.stringify(frontmatter));
+    const fileContent = matter.stringify(content, cleanFrontmatter);
     const tempPath = `${filePath}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
     try {
       writeFileSync(tempPath, fileContent, 'utf8');

@@ -1,0 +1,16 @@
+{
+  "name": "agentrunlog",
+  "displayName": "AgentRunlog Memory",
+  "version": "0.1.1",
+  "description": "Typed engineering memory & Karpathy LLM Wiki for coding agents. Remembers architectural decisions, RCAs, and dead ends across sessions.",
+  "author": {
+    "name": "Turgay Savacı",
+    "url": "https://github.com/trgysvc"
+  },
+  "repository": "https://github.com/trgysvc/AgentRunlog",
+  "suggestedPrompts": [
+    "Check active decisions and known dead ends for this project",
+    "Record our architectural decision into AgentRunlog",
+    "Search AgentRunlog for past errors or root cause analyses"
+  ]
+}

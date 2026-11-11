@@ -191,5 +191,25 @@
   - `wiki/index.md` üreticisine `Root Cause Analyses (RCA)` tablosu eklendi.
   - `README.md` dosyasına **Dual-Agent Design & Zero-Cost Offline Compiler** mimari açıklaması eklendi.
 
+---
+
+## [2026-11-11] — Faz 7: Yerel Eklenti Paketi (Native Plugin Bundle) & Canlı MCP Yazma Araçları
+
+### 1. Tek Komutla Kurulabilir Native Plugin Mimarisi
+- **Neden Yapıldı?**  
+  Kullanıcıların elle `mcp_config.json` veya `hooks.json` düzenlemek zorunda kalmaması, GitHub üzerinden eklenti olarak kolayca kurabilmesi için.
+- **Ne Eklendi?**
+  - Antigravity Plugin paketi: `plugin.json`, `mcp_config.json`, `hooks.json`, `rules/AGENTS.md`, `skills/agentrunlog/SKILL.md`.
+  - Claude Code Plugin paketi: `.claude-plugin/plugin.json`, `.mcp.json`, `hooks/hooks.json`.
+  - `runlog install-plugin antigravity` komutu: Eklentiyi doğrudan `~/.gemini/config/plugins/agentrunlog/` altına kurar ve çakışma olmaması için kullanıcının manuel MCP kaydını temizler.
+
+### 2. Canlı MCP Yazma Araçları & Multi-Workspace Desteği (`projectRoot`)
+- **Neden Yapıldı?**  
+  1. Eklenti global olarak kurulduğunda MCP sunucusunun `cwd` dizini eklenti klasörü oluyor. Tüm MCP araçlarına opsiyonel `projectRoot` parametresi eklenerek birden fazla projede aynı anda kesintisiz çalışması sağlandı.
+  2. Geliştirici sohbet sırasında *"Bunu karar olarak kaydet"* dediğinde ajanın anında hafızaya yazabilmesi için `record_decision`, `record_dead_end` ve `record_rca` MCP araçları eklendi.
+
+- **Doğrulama:** 27/27 test yeşil (`27 passed`), Antigravity `lsrpc GetAllPlugins` doğrulamasından geçti.
+
+
 
 
