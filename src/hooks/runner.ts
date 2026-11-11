@@ -103,14 +103,20 @@ export class HookRunner {
       args.sessionId ||
       String(payload.session_id || payload.sessionId || `sess_${Date.now()}`);
 
-    const platform = args.platform.toLowerCase();
+    const rawPlatform = args.platform.toLowerCase();
     const event = args.event.toLowerCase();
+
+    let normalizedPlatform: 'claude_code' | 'antigravity' | 'cursor' | 'codex' = 'claude_code';
+    if (rawPlatform.includes('claude')) normalizedPlatform = 'claude_code';
+    else if (rawPlatform.includes('antigravity')) normalizedPlatform = 'antigravity';
+    else if (rawPlatform.includes('cursor')) normalizedPlatform = 'cursor';
+    else if (rawPlatform.includes('codex')) normalizedPlatform = 'codex';
 
     // 1. Log event
     if (event.includes('tool-use') || event.includes('prompt')) {
       this.storage.logger.logEvent({
         sessionId,
-        platform: platform as any,
+        platform: normalizedPlatform,
         eventType: event.includes('pre-tool')
           ? 'pre_tool_use'
           : event.includes('post-tool')
@@ -123,13 +129,13 @@ export class HookRunner {
 
     // 2. Handle push events
     let pushText: string | null = null;
-    if (platform === 'claude' && event === 'session-start') {
+    if (normalizedPlatform === 'claude_code' && event === 'session-start') {
       pushText = this.hooks.claude.handleSessionStart(sessionId);
-    } else if (platform === 'antigravity' && event === 'pre-invocation') {
+    } else if (normalizedPlatform === 'antigravity' && event === 'pre-invocation') {
       pushText = this.hooks.antigravity.handlePreInvocation(sessionId, 1);
-    } else if (platform === 'codex' && event === 'session-start') {
+    } else if (normalizedPlatform === 'codex' && event === 'session-start') {
       pushText = this.hooks.codex.handleSessionStart(sessionId);
-    } else if (platform === 'cursor' && event === 'before-submit-prompt') {
+    } else if (normalizedPlatform === 'cursor' && event === 'before-submit-prompt') {
       this.hooks.cursor.handlePromptSubmit(sessionId, String(payload.text || ''));
     }
 
