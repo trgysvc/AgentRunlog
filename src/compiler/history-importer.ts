@@ -4,6 +4,9 @@ import { homedir } from 'node:os';
 import { type StorageManager } from '../storage/index.js';
 import { type RawSessionEvent } from '../types/schemas.js';
 
+/** Per-message safety cap only (disk protection); normal messages are stored in full. */
+const MAX_IMPORTED_TEXT = 200_000;
+
 export interface ImportHistoryOptions {
   antigravityBrainDir?: string;
   claudeProjectsDir?: string;
@@ -413,7 +416,7 @@ export class HistoryImporter {
                 platform: 'antigravity',
                 eventType: 'prompt_submit',
                 timestamp,
-                payload: { text: cleanPrompt.slice(0, 1500) },
+                payload: { text: cleanPrompt.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           } else if (step.type === 'GENERIC' && step.content) {
@@ -428,7 +431,7 @@ export class HistoryImporter {
                 payload: {
                   command: 'terminal_command',
                   exitCode: Number(exitMatch[1]),
-                  error: content.slice(0, 600),
+                  error: content.slice(0, MAX_IMPORTED_TEXT),
                 },
               });
             }
@@ -440,7 +443,7 @@ export class HistoryImporter {
                 platform: 'antigravity',
                 eventType: 'agent_response',
                 timestamp,
-                payload: { text: responseText.slice(0, 1200) },
+                payload: { text: responseText.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           }
@@ -482,7 +485,7 @@ export class HistoryImporter {
                 platform: 'claude_code',
                 eventType: 'prompt_submit',
                 timestamp,
-                payload: { text: content.slice(0, 1500) },
+                payload: { text: content.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           } else if (entry.type === 'assistant' && entry.message?.content) {
@@ -496,7 +499,7 @@ export class HistoryImporter {
                 platform: 'claude_code',
                 eventType: 'agent_response',
                 timestamp,
-                payload: { text: content.slice(0, 1200) },
+                payload: { text: content.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           }
@@ -537,7 +540,7 @@ export class HistoryImporter {
                 platform: 'codex',
                 eventType: 'prompt_submit',
                 timestamp,
-                payload: { text: text.slice(0, 1500) },
+                payload: { text: text.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           } else if (
@@ -552,7 +555,7 @@ export class HistoryImporter {
                 platform: 'codex',
                 eventType: 'agent_response',
                 timestamp,
-                payload: { text: text.slice(0, 1200) },
+                payload: { text: text.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           } else if (payloadType === 'local_shell_call_output' || entry.payload?.exit_code > 0) {
@@ -566,7 +569,7 @@ export class HistoryImporter {
                 payload: {
                   command: String(entry.payload?.command || 'codex_shell'),
                   exitCode,
-                  error: String(entry.payload?.output || entry.payload?.error || '').slice(0, 600),
+                  error: String(entry.payload?.output || entry.payload?.error || '').slice(0, MAX_IMPORTED_TEXT),
                 },
               });
             }
@@ -610,7 +613,7 @@ export class HistoryImporter {
                 platform: 'cursor',
                 eventType: 'prompt_submit',
                 timestamp,
-                payload: { text: text.slice(0, 1500) },
+                payload: { text: text.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           } else if (role === 'assistant' || role === 'ai') {
@@ -621,7 +624,7 @@ export class HistoryImporter {
                 platform: 'cursor',
                 eventType: 'agent_response',
                 timestamp,
-                payload: { text: text.slice(0, 1200) },
+                payload: { text: text.slice(0, MAX_IMPORTED_TEXT) },
               });
             }
           } else if (entry.exitCode && entry.exitCode !== 0) {
@@ -633,7 +636,7 @@ export class HistoryImporter {
               payload: {
                 command: String(entry.command || 'cursor_shell'),
                 exitCode: Number(entry.exitCode),
-                error: String(entry.error || entry.output || '').slice(0, 600),
+                error: String(entry.error || entry.output || '').slice(0, MAX_IMPORTED_TEXT),
               },
             });
           }
@@ -698,7 +701,7 @@ export class HistoryImporter {
                         platform: 'cursor',
                         eventType: b.type === 'user' || b.type === 1 ? 'prompt_submit' : 'agent_response',
                         timestamp: b.timestamp || new Date().toISOString(),
-                        payload: { text: text.slice(0, 1500) },
+                        payload: { text: text.slice(0, MAX_IMPORTED_TEXT) },
                       });
                     }
                   }
