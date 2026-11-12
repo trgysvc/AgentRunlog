@@ -25,11 +25,15 @@ function findPackageRoot(startDir: string): string {
 }
 
 /**
- * Absolute `node <cli>` command so hooks never depend on `runlog` being on PATH.
+ * Absolute `node <entry>` command so hooks never depend on `runlog` being on PATH.
+ * Prefers the dependency-free bundle/hook.mjs (NFR-05 latency); it accepts the same
+ * `hook <platform> <event>` arguments as the full CLI, which is the fallback.
  */
 export function defaultCliCommand(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  const entry = resolve(findPackageRoot(here), 'dist/cli/index.js');
+  const root = findPackageRoot(here);
+  const light = resolve(root, 'bundle/hook.mjs');
+  const entry = existsSync(light) ? light : resolve(root, 'dist/cli/index.js');
   return `"${process.execPath}" "${entry}"`;
 }
 

@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { runLightHook } from './light.js';
 import { type StorageManager } from '../storage/index.js';
 import { type HookManager } from './index.js';
 
@@ -11,46 +10,32 @@ export interface HookInvocationArgs {
   cliPath?: string;
 }
 
+const STDIN_CAP_MS = 1000;
+
 /**
- * Reads process.stdin with a non-blocking timeout (< 15ms)
+ * Reads process.stdin until `end` (hook payloads arrive in several chunks), capped by timeoutMs,
+ * and releases the stream afterwards so the process can exit.
  */
-export async function readStdinWithTimeout(timeoutMs: number = 15): Promise<string> {
+export async function readStdinWithTimeout(timeoutMs: number = STDIN_CAP_MS): Promise<string> {
   return new Promise((resolve) => {
+    if (process.stdin.isTTY) return resolve('');
     let data = '';
     let settled = false;
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve(data);
-      }
-    }, timeoutMs);
-
-    if (process.stdin.isTTY) {
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      return resolve('');
-    }
-
+      process.stdin.pause();
+      process.stdin.unref?.();
+      resolve(data);
+    };
+    const timer = setTimeout(finish, timeoutMs);
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (chunk) => {
       data += chunk;
     });
-
-    process.stdin.on('end', () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        resolve(data);
-      }
-    });
-
-    process.stdin.on('error', () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        resolve(data);
-      }
-    });
+    process.stdin.on('end', finish);
+    process.stdin.on('error', finish);
   });
 }
 
@@ -91,93 +76,37 @@ export class HookRunner {
   }
 
   /**
-   * Executes hook logic with stdin payload reading and fast exit
+   * Executes hook logic: delegates to the dependency-free light core shared with the bundled
+   * hook entry, so both paths behave identically.
    */
   public async runHook(args: HookInvocationArgs): Promise<string | null> {
     if (process.env.AGENTRUNLOG_INTERNAL === '1' || process.env.AGENTRUNLOG_SKIP === '1') {
       return null;
     }
 
-    const rawStdin = await readStdinWithTimeout(15);
+    const rawStdin = await readStdinWithTimeout(STDIN_CAP_MS);
     let payload: Record<string, unknown> = {};
-
+    let payloadParsed = false;
     if (rawStdin.trim().length > 0) {
       try {
-        payload = JSON.parse(rawStdin);
+        const parsed = JSON.parse(rawStdin);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          payload = parsed as Record<string, unknown>;
+          payloadParsed = true;
+        }
       } catch {
-        payload = { rawText: rawStdin.trim() };
+        // unparsable payload: never invent a session for it
       }
     }
 
-    const defaultDailySession = `sess_${new Date().toISOString().slice(0, 10)}`;
-    const sessionId =
-      args.sessionId ||
-      String(payload.conversation_id || payload.session_id || payload.sessionId || defaultDailySession);
-
-    const rawPlatform = args.platform.toLowerCase();
-    const event = args.event.toLowerCase();
-
-    let normalizedPlatform: 'claude_code' | 'antigravity' | 'cursor' | 'codex' = 'claude_code';
-    if (rawPlatform.includes('claude')) normalizedPlatform = 'claude_code';
-    else if (rawPlatform.includes('antigravity')) normalizedPlatform = 'antigravity';
-    else if (rawPlatform.includes('cursor')) normalizedPlatform = 'cursor';
-    else if (rawPlatform.includes('codex')) normalizedPlatform = 'codex';
-
-    // 1. Log event with full stdin payload
-    let mappedEventType:
-      | 'session_start'
-      | 'prompt_submit'
-      | 'pre_tool_use'
-      | 'post_tool_use'
-      | 'agent_response'
-      | 'pre_compact'
-      | 'session_end'
-      | null = null;
-
-    if (event === 'session-start') mappedEventType = 'session_start';
-    else if (event.includes('prompt') || event === 'pre-invocation') mappedEventType = 'prompt_submit';
-    else if (event === 'post-invocation') mappedEventType = 'agent_response';
-    else if (event.includes('pre-tool')) mappedEventType = 'pre_tool_use';
-    else if (event.includes('post-tool')) mappedEventType = 'post_tool_use';
-    else if (event === 'pre-compact') mappedEventType = 'pre_compact';
-    else if (event === 'session-end' || event === 'stop') mappedEventType = 'session_end';
-
-    if (mappedEventType) {
-      this.storage.logger.logEvent({
-        sessionId,
-        platform: normalizedPlatform,
-        eventType: mappedEventType,
-        timestamp: new Date().toISOString(),
-        payload,
-      });
-    }
-
-    // 2. Handle push events (read pre-compiled cache < 5ms)
-    let pushText: string | null = null;
-    if (
-      (normalizedPlatform === 'claude_code' && event === 'session-start') ||
-      (normalizedPlatform === 'antigravity' && event === 'pre-invocation') ||
-      (normalizedPlatform === 'codex' && event === 'session-start')
-    ) {
-      const cache = this.storage.cache.getActiveContext();
-      pushText = this.storage.cache.formatPushInjection(cache);
-    }
-
-    // 3. Auto-bootstrap uninitialized projects in background (zero manual init needed!)
-    const isBootstrapDone = existsSync(join(this.storage.paths.cache, 'bootstrap.done'));
-    if (!isBootstrapDone && args.cliPath) {
-      this.triggerDetachedWorker(args.cliPath, 'bootstrap');
-    }
-
-    // 4. Handle session completion events or crash recovery on start (Trigger detached compiler)
-    const isCompletionEvent =
-      event === 'session-end' || event === 'stop' || event === 'pre-compact';
-    const isStartEvent = event === 'session-start' || event === 'pre-invocation' || event === 'before-submit-prompt';
-
-    if (args.cliPath && isBootstrapDone && (isCompletionEvent || isStartEvent)) {
-      this.triggerDetachedWorker(args.cliPath, 'compile');
-    }
-
-    return pushText;
+    return runLightHook({
+      platform: args.platform,
+      event: args.event,
+      sessionId: args.sessionId,
+      payload,
+      payloadParsed: payloadParsed || !!args.sessionId,
+      storageRoot: this.storage.paths.root,
+      cliPath: args.cliPath,
+    });
   }
 }

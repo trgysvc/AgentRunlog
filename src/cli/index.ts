@@ -11,7 +11,8 @@ import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/
 import { HookManager } from '../hooks/index.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
-import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
+import { acquireLock } from '../storage/lock.js';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -113,7 +114,14 @@ Usage:
 
   if (command === 'bootstrap') {
     if (isValidProjectDirectory(process.cwd())) {
-      await ensureProjectBootstrapped(process.cwd());
+      const bsStorage = new StorageManager();
+      const releaseBootstrap = acquireLock(join(bsStorage.paths.cache, 'bootstrap.lock'));
+      if (!releaseBootstrap) return; // another bootstrap worker is already running
+      try {
+        await ensureProjectBootstrapped(process.cwd());
+      } finally {
+        releaseBootstrap();
+      }
     }
     return;
   }
@@ -131,21 +139,17 @@ Usage:
     }
     const hookStorage = new StorageManager();
     const hookManager = new HookManager(hookStorage);
-    const platform = args[1] || 'claude';
-    const event = args[2] || 'session-start';
-    const sessionId = args[3];
-
     const pushText = await hookManager.runner.runHook({
-      platform,
-      event,
-      sessionId,
+      platform: args[1] || 'claude',
+      event: args[2] || 'session-start',
+      sessionId: args[3],
       cliPath: process.argv[1],
     });
 
     if (pushText) {
       process.stdout.write(pushText + '\n');
     }
-    return;
+    process.exit(0);
   }
 
   const storage = new StorageManager();
@@ -258,42 +262,73 @@ Usage:
     }
 
     case 'compile': {
-      console.log('⚙️ Running AgentRunlog Compiler Worker...');
-      const targetSession = args[1];
-      const extractor = new TranscriptExtractor(storage, storage.config.compiler as any);
-
-      let filesToCompile: string[] = [];
-
-      if (targetSession && existsSync(targetSession)) {
-        filesToCompile = [targetSession];
-      } else if (existsSync(storage.paths.raw)) {
-        filesToCompile = readdirSync(storage.paths.raw)
-          .filter((f) => f.startsWith('session-') && f.endsWith('.jsonl'))
-          .map((f) => join(storage.paths.raw, f));
-      }
-
-      if (filesToCompile.length === 0) {
-        console.log('ℹ️ No raw session transcripts found to compile.');
+      const releaseCompile = acquireLock(join(storage.paths.cache, 'compile.lock'));
+      if (!releaseCompile) {
+        console.log('ℹ️ Another compile worker is already running; skipping.');
         break;
       }
+      try {
+        console.log('⚙️ Running AgentRunlog Compiler Worker...');
+        const targetSession = args[1];
+        const extractor = new TranscriptExtractor(storage, storage.config.compiler as any);
+        const statePath = join(storage.paths.cache, 'compiled.json');
+        let compiledState: Record<string, number> = {};
+        try {
+          compiledState = JSON.parse(readFileSync(statePath, 'utf8'));
+        } catch {}
 
-      let totalDecisions = 0;
-      let totalRcas = 0;
-      let totalDeadEnds = 0;
+        let filesToCompile: string[] = [];
+        if (targetSession && existsSync(targetSession)) {
+          filesToCompile = [targetSession];
+        } else if (existsSync(storage.paths.raw)) {
+          filesToCompile = readdirSync(storage.paths.raw)
+            .filter((f) => f.startsWith('session-') && f.endsWith('.jsonl'))
+            .map((f) => join(storage.paths.raw, f));
+        }
 
-      for (const file of filesToCompile) {
-        console.log(`📄 Compiling session: ${file}...`);
-        const bundle = await extractor.extractAndCompile(file);
-        totalDecisions += bundle.decisions.length;
-        totalRcas += bundle.rcas.length;
-        totalDeadEnds += bundle.deadEnds.length;
+        // Reset the uncompiled-turn counter BEFORE reading, so turns logged meanwhile count again.
+        try {
+          writeFileSync(join(storage.paths.cache, 'pending.json'), JSON.stringify({ turns: 0 }), 'utf8');
+        } catch {}
+
+        // Incremental: only transcripts that grew since their last compile.
+        const dirty = filesToCompile.filter((f) => {
+          try {
+            return targetSession ? true : statSync(f).size !== compiledState[f];
+          } catch {
+            return false;
+          }
+        });
+
+        if (dirty.length === 0) {
+          console.log('ℹ️ Nothing new to compile.');
+          break;
+        }
+
+        let totalDecisions = 0;
+        let totalRcas = 0;
+        let totalDeadEnds = 0;
+        for (const file of dirty) {
+          console.log(`📄 Compiling session: ${file}...`);
+          const sizeBefore = statSync(file).size;
+          const bundle = await extractor.extractAndCompile(file);
+          compiledState[file] = sizeBefore;
+          totalDecisions += bundle.decisions.length;
+          totalRcas += bundle.rcas.length;
+          totalDeadEnds += bundle.deadEnds.length;
+        }
+        try {
+          writeFileSync(statePath, JSON.stringify(compiledState), 'utf8');
+        } catch {}
+
+        console.log(`\n✨ Compilation complete:`);
+        console.log(`   - Decisions extracted: ${totalDecisions}`);
+        console.log(`   - RCAs extracted:      ${totalRcas}`);
+        console.log(`   - DeadEnds logged:     ${totalDeadEnds}`);
+        console.log(`   - Wiki Index:          ${storage.paths.wikiIndex}`);
+      } finally {
+        releaseCompile();
       }
-
-      console.log(`\n✨ Compilation complete:`);
-      console.log(`   - Decisions extracted: ${totalDecisions}`);
-      console.log(`   - RCAs extracted:      ${totalRcas}`);
-      console.log(`   - DeadEnds logged:     ${totalDeadEnds}`);
-      console.log(`   - Wiki Index:          ${storage.paths.wikiIndex}`);
       break;
     }
 

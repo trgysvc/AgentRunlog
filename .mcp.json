@@ -2,7 +2,7 @@
   "mcpServers": {
     "agentrunlog": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js", "mcp"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bundle/agentrunlog.mjs", "mcp"]
     }
   }
 }

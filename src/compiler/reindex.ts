@@ -65,6 +65,10 @@ export class WikiReindexer {
       mkdirSync(dir, { recursive: true });
     }
 
+    try {
+      rmSync(join(paths.cache, 'compiled.json'), { force: true });
+    } catch {}
+
     // 4. Re-extract from every raw session (real extraction, not empty bundles)
     let recordCount = 0;
     let processed = 0;

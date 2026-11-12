@@ -144,7 +144,7 @@ describe('Hook manifests use the nested matcher-group format', () => {
     expect(claude.hooks.SessionStart[0].hooks[0].command).toBe('echo mine');
     const ours = claude.hooks.SessionStart[1].hooks[0];
     expect(ours.type).toBe('command');
-    expect(ours.command).toMatch(/^"\/.*node.*" ".*dist\/cli\/index\.js" hook claude session-start$/);
+    expect(ours.command).toMatch(/^"\/.*node.*" ".*(bundle\/hook\.mjs|dist\/cli\/index\.js)" hook claude session-start$/);
 
     const codex = JSON.parse(readFileSync(hm.codex.install(dir), 'utf8'));
     expect(codex.hooks.Stop[0].hooks[0].command).toContain('hook codex stop');
