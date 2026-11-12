@@ -3,32 +3,36 @@
  * Standalone hook entry (bundled to bundle/hook.mjs). Usage: node hook.mjs [hook] <platform> <event> [sessionId]
  * Deliberately avoids zod / gray-matter / MCP SDK to honour the NFR-05 latency budget.
  */
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isValidProjectDirectory } from '../compiler/project-dir.js';
 import { formatHookOutput, runLightHook } from './light.js';
 
-const STDIN_CAP_MS = 1000;
-const STDIN_MAX_BYTES = 8 * 1024 * 1024;
+// No size cap: a cut-off payload is unparsable JSON and the event would be lost. Instead we wait
+// for the stream to end, and only give up when the sender goes silent (idle) for a while.
+const STDIN_FIRST_BYTE_MS = 1000;
+const STDIN_IDLE_MS = 5000;
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     if (process.stdin.isTTY) return resolve('');
-    let data = '';
+    const chunks: string[] = [];
     let done = false;
+    let timer: NodeJS.Timeout;
     const finish = () => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       process.stdin.destroy();
-      resolve(data);
+      resolve(chunks.join(''));
     };
-    const timer = setTimeout(finish, STDIN_CAP_MS);
+    timer = setTimeout(finish, STDIN_FIRST_BYTE_MS);
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (c: string) => {
-      data += c;
-      if (data.length > STDIN_MAX_BYTES) finish();
+      chunks.push(c);
+      clearTimeout(timer);
+      timer = setTimeout(finish, STDIN_IDLE_MS);
     });
     process.stdin.on('end', finish);
     process.stdin.on('error', finish);
@@ -51,7 +55,15 @@ async function main(): Promise<void> {
         payloadParsed = true;
       }
     } catch {
-      // unparsable payload: do not invent a session for it
+      // unparsable payload: do not invent a session for it, but never lose it silently either
+      try {
+        const root = (typeof process.cwd === 'function' && process.cwd()) || '';
+        if (root && isValidProjectDirectory(root)) {
+          const dir = join(root, '.agentrunlog', 'cache');
+          mkdirSync(dir, { recursive: true });
+          appendFileSync(join(dir, 'hook-errors.log'), `${new Date().toISOString()} unparsable payload platform=${platform} event=${argv[1] ?? ''} bytes=${raw.length}\n`);
+        }
+      } catch {}
     }
   }
 

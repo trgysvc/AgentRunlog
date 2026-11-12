@@ -14,6 +14,7 @@ import { formatHookOutput } from '../hooks/light.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
 import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
+import { formatBytes, storageUsage } from '../storage/usage.js';
 import { acquireLock } from '../storage/lock.js';
 import { join } from 'node:path';
 
@@ -35,6 +36,7 @@ Usage:
                               (--force re-imports every conversation, ignoring the unchanged-file cache)
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
+  runlog usage                Show how much disk space AgentRunlog uses (per folder)
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
   runlog mcp                  Start Model Context Protocol (MCP) server over stdio
@@ -127,6 +129,17 @@ Usage:
         releaseBootstrap();
       }
     }
+    return;
+  }
+
+  if (command === 'usage') {
+    const st = new StorageManager();
+    const u = storageUsage(st.paths.root);
+    console.log(`AgentRunlog disk usage — ${st.paths.root}\n`);
+    for (const e of u.entries) console.log(`  ${e.name.padEnd(14)} ${formatBytes(e.bytes).padStart(10)}  (${e.files} files)`);
+    console.log(`\n  ${'TOTAL'.padEnd(14)} ${formatBytes(u.total).padStart(10)}`);
+    const raw = u.entries.find((e) => e.name === 'raw/');
+    if (raw && raw.bytes > u.total * 0.5) console.log('\n  raw/ holds the full conversation copies (git-ignored). Originals stay in each platform.');
     return;
   }
 

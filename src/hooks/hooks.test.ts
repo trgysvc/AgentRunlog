@@ -199,3 +199,26 @@ describe('Hook manifests use the nested matcher-group format', () => {
     expect(JSON.parse(formatHookOutput('antigravity', 'pre-invocation', null)!)).toEqual({ injectSteps: [] });
   });
 });
+
+describe('Large hook payloads and disk usage', () => {
+  it('captures a >8MB event completely (no cap, no loss) and reports disk usage', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join, resolve } = await import('node:path');
+    const { storageUsage } = await import('../storage/usage.js');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_big_'));
+    writeFileSync(join(dir, 'package.json'), '{"name":"big"}');
+    const big = 'x'.repeat(10 * 1024 * 1024);
+    const payload = JSON.stringify({ session_id: 'big1', cwd: dir, prompt: big });
+    const r = spawnSync('node', [resolve('bundle/hook.mjs'), 'claude', 'prompt-submit'], { input: payload, cwd: dir, env: { ...process.env, AGENTRUNLOG_INTERNAL: '', AGENTRUNLOG_NO_WORKER: '1' } });
+    expect(r.status).toBe(0);
+    const raw = join(dir, '.agentrunlog', 'raw');
+    const f = readdirSync(raw).find((n) => n.includes('big1'));
+    expect(f).toBeTruthy();
+    expect(readFileSync(join(raw, f!), 'utf8').length).toBeGreaterThan(10 * 1024 * 1024);
+    const u = storageUsage(join(dir, '.agentrunlog'));
+    expect(u.total).toBeGreaterThan(10 * 1024 * 1024);
+    expect(u.entries.find((e) => e.name === 'raw/')!.bytes).toBeGreaterThan(10 * 1024 * 1024);
+  }, 30000);
+});
