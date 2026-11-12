@@ -36,7 +36,7 @@ describe('End-to-End System Integration Flow', () => {
     }
   });
 
-  it('runs complete lifecycle: Hook Capture -> Sanitization -> Compile -> MCP Query -> Linter -> Reindex', () => {
+  it('runs complete lifecycle: Hook Capture -> Sanitization -> Compile -> MCP Query -> Linter -> Reindex', async () => {
     // 1. Session 1 Starts on Claude Code
     const sessionId1 = 'sess_prod_001';
     const initialPush = hooks.claude.handleSessionStart(sessionId1);
@@ -147,8 +147,12 @@ describe('End-to-End System Integration Flow', () => {
     expect(lintReport.issueCount.errors).toBe(0);
 
     // 8. Reindexer guarantees full recovery from raw transcripts (NFR-10)
-    const reindexRes = reindexer.reindex();
+    const reindexRes = await reindexer.reindex();
     expect(reindexRes.processedSessions).toBe(2); // sess_prod_001 and sess_prod_002
+    // Records injected by hand (no transcript behind them) are not reproducible from raw alone,
+    // so the previous wiki must remain recoverable from the automatic backup.
+    expect(reindexRes.backupDir).toBeTruthy();
+    expect(existsSync(join(reindexRes.backupDir!, 'wiki', 'decisions', 'DEC-001.md'))).toBe(true);
   });
 
   it('auto-bootstraps valid project directories automatically without manual init', async () => {

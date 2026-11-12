@@ -100,6 +100,21 @@ export class WikiManager {
     }
   }
 
+  public listTasks(): Task[] {
+    try {
+      const files = readdirSync(this.paths.tasks).filter((f) => f.endsWith('.md'));
+      const results: Task[] = [];
+      for (const file of files) {
+        const parsed = matter(readFileSync(join(this.paths.tasks, file), 'utf8'));
+        const res = TaskSchema.safeParse(parsed.data);
+        if (res.success) results.push(res.data);
+      }
+      return results;
+    } catch {
+      return [];
+    }
+  }
+
   // DeadEnds
   public saveDeadEnd(deadEnd: DeadEnd): void {
     const valid = DeadEndSchema.parse(deadEnd);

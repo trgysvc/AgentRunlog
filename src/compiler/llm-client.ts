@@ -6,35 +6,68 @@ function deterministicShortId(seed: string): string {
   return createHash('sha256').update(seed).digest('hex').slice(0, 6).toUpperCase();
 }
 
+export type ResolvedProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'heuristic';
+
 export interface LLMClientConfig {
-  provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'heuristic';
+  /**
+   * 'local'  -> offline heuristic only, never touches the network (NFR-02 default).
+   * 'cloud'  -> explicit opt-in; the vendor is chosen from whichever API key is set.
+   * Or a concrete vendor name. Undefined behaves like 'local'.
+   */
+  provider?: ResolvedProvider | 'local' | 'cloud';
   apiKey?: string;
   endpoint?: string;
   model?: string;
 }
 
+const PLACEHOLDER_MODELS = new Set(['fast-default', 'default', '']);
+
+/**
+ * Resolves provider + key so that a key is only ever sent to its own vendor (NFR-02).
+ */
+export function resolveLLMConfig(
+  config: LLMClientConfig,
+  env: NodeJS.ProcessEnv = process.env
+): { provider: ResolvedProvider; apiKey?: string; endpoint?: string; model?: string } {
+  const model = config.model && !PLACEHOLDER_MODELS.has(config.model) ? config.model : undefined;
+  const requested = config.provider ?? 'local';
+
+  let provider: ResolvedProvider;
+  if (requested === 'local') {
+    provider = 'heuristic';
+  } else if (requested === 'cloud') {
+    provider = env.ANTHROPIC_API_KEY
+      ? 'anthropic'
+      : env.OPENAI_API_KEY
+        ? 'openai'
+        : env.GEMINI_API_KEY
+          ? 'gemini'
+          : 'heuristic';
+  } else {
+    provider = requested;
+  }
+
+  const keyByProvider: Record<ResolvedProvider, string | undefined> = {
+    anthropic: env.ANTHROPIC_API_KEY,
+    openai: env.OPENAI_API_KEY,
+    gemini: env.GEMINI_API_KEY,
+    ollama: undefined,
+    heuristic: undefined,
+  };
+
+  return {
+    provider,
+    apiKey: config.apiKey || keyByProvider[provider],
+    endpoint: config.endpoint,
+    model,
+  };
+}
+
 export class LLMCompilerClient {
-  private config: LLMClientConfig;
+  private config: ReturnType<typeof resolveLLMConfig>;
 
   constructor(config: LLMClientConfig = {}) {
-    this.config = {
-      provider:
-        config.provider ||
-        (process.env.ANTHROPIC_API_KEY
-          ? 'anthropic'
-          : process.env.OPENAI_API_KEY
-            ? 'openai'
-            : process.env.GEMINI_API_KEY
-              ? 'gemini'
-              : 'heuristic'),
-      apiKey:
-        config.apiKey ||
-        process.env.ANTHROPIC_API_KEY ||
-        process.env.OPENAI_API_KEY ||
-        process.env.GEMINI_API_KEY,
-      endpoint: config.endpoint,
-      model: config.model,
-    };
+    this.config = resolveLLMConfig(config);
   }
 
   /**

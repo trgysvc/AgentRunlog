@@ -212,19 +212,74 @@ describe('Compiler & Linter Engine', () => {
     expect(bundle.deadEnds[0].whyFailed).toContain('Failed 2 times');
   });
 
-  it('reindexer can reconstruct knowledge base from scratch (NFR-10)', () => {
-    // Log an event to raw
+  it('reindexer really rebuilds records from raw and keeps non-transcript records (NFR-10)', async () => {
+    const ts = new Date().toISOString();
     storage.logger.logEvent({
       sessionId: 'sess_test',
       platform: 'cursor',
       eventType: 'prompt_submit',
-      timestamp: new Date().toISOString(),
-      payload: { query: 'Initial prompt' },
+      timestamp: ts,
+      payload: { text: "let's use Drizzle ORM instead of Prisma for the data layer" },
     });
 
-    const result = reindexer.reindex();
+    // A record that only exists via MCP (no raw transcript behind it)
+    const mcpDecision = {
+      id: 'DEC-MCP1',
+      title: 'Manual decision',
+      status: 'active' as const,
+      decidedBy: 'user',
+      author: 'user' as const,
+      context: 'recorded via MCP',
+      choice: 'Use pnpm',
+      supersedes: [],
+      supersededBy: null,
+      affectsModules: [],
+      evidence: { sessionId: 'live_1', timestamp: ts },
+      confidence: 'high' as const,
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    storage.wiki.saveDecision(mcpDecision);
+
+    const result = await reindexer.reindex();
     expect(result.processedSessions).toBe(1);
-    expect(existsSync(storage.paths.wiki)).toBe(true);
+    expect(result.totalRecordsGenerated).toBeGreaterThan(0);
+    expect(result.retainedRecords).toBe(1);
+    expect(result.backupDir && existsSync(result.backupDir)).toBeTruthy();
+
+    const decisions = storage.wiki.listDecisions();
+    expect(decisions.some((d) => d.choice.includes('Drizzle'))).toBe(true);
+    expect(decisions.some((d) => d.id === 'DEC-MCP1')).toBe(true);
+    expect(storage.wiki.listTasks().length).toBeGreaterThan(0);
+  });
+
+  it('recompiling never resurrects a superseded decision (FR-07)', async () => {
+    const ts = new Date().toISOString();
+    const base = {
+      status: 'active' as const,
+      decidedBy: 'user',
+      author: 'user' as const,
+      context: 'ctx',
+      supersededBy: null,
+      affectsModules: [],
+      evidence: { sessionId: 'sess_x', timestamp: ts },
+      confidence: 'high' as const,
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    const oldDec = { ...base, id: 'DEC-OLD', title: 'Old', choice: 'Use Prisma', supersedes: [] };
+    const newDec = { ...base, id: 'DEC-NEW', title: 'New', choice: 'Use Drizzle', supersedes: ['DEC-OLD'] };
+    const bundle = { decisions: [oldDec, newDec], rcas: [], deadEnds: [], tasks: [] };
+
+    extractor.compileSession('', bundle);
+    // Second compile re-submits the original (still "active") old decision
+    extractor.compileSession('', bundle);
+
+    const old = storage.wiki.listDecisions().find((d) => d.id === 'DEC-OLD')!;
+    expect(old.status).toBe('superseded');
+    expect(old.supersededBy).toBe('DEC-NEW');
+    const cache = storage.cache.getActiveContext()!;
+    expect(cache.activeDecisions.map((d) => d.id)).toEqual(['DEC-NEW']);
   });
 
   it('CodebaseScanner bootstraps tech stack, modules, and docs for mid-project setup', async () => {

@@ -95,23 +95,27 @@ ${formattedEvents}
    * Compiles session events and updates wiki, module pages, index.md and active context cache
    */
   public compileSession(sessionFilePath: string, bundle: ExtractedBundle): void {
-    // 1. Save all decisions and handle supersedes (FR-07)
+    // 1. Save all decisions. Re-compiling must never undo curation: a record that already exists
+    //    keeps its lifecycle fields (status, supersededBy, confidence, decidedBy), otherwise a
+    //    superseded decision would be resurrected by the next compile (Decision Drift, FR-07).
+    const existingById = new Map(this.storage.wiki.listDecisions().map((d) => [d.id, d]));
     for (const dec of bundle.decisions) {
       const parsed = DecisionSchema.safeParse(dec);
-      if (parsed.success) {
-        // If this decision supersedes earlier ones, update those earlier ones
-        for (const supersededId of parsed.data.supersedes) {
-          const oldDec = this.storage.wiki.listDecisions().find((d) => d.id === supersededId);
-          if (oldDec) {
-            oldDec.status = 'superseded';
-            oldDec.supersededBy = parsed.data.id;
-            oldDec.updatedAt = new Date().toISOString();
-            this.storage.wiki.saveDecision(oldDec);
+      if (!parsed.success) continue;
+      const prior = existingById.get(parsed.data.id);
+      const record = prior
+        ? {
+            ...parsed.data,
+            status: prior.status,
+            supersededBy: prior.supersededBy,
+            confidence: prior.confidence,
+            decidedBy: prior.decidedBy,
+            createdAt: prior.createdAt,
           }
-        }
-        this.storage.wiki.saveDecision(parsed.data);
-      }
+        : parsed.data;
+      this.storage.wiki.saveDecision(record);
     }
+    this.applySupersedes();
 
     // 2. Save RCAs
     for (const rca of bundle.rcas) {
@@ -142,6 +146,25 @@ ${formattedEvents}
 
     // 6. Regenerate Pre-compiled Context Cache (FR-19, NFR-07)
     this.refreshActiveContextCache();
+  }
+
+  /**
+   * Derives the supersede graph deterministically (FR-07): every decision listing `supersedes: [X]`
+   * marks X as superseded by it. Idempotent, so it is safe after any compile or reindex.
+   */
+  public applySupersedes(): void {
+    const all = this.storage.wiki.listDecisions();
+    const byId = new Map(all.map((d) => [d.id, d]));
+    for (const newer of all) {
+      for (const oldId of newer.supersedes) {
+        const old = byId.get(oldId);
+        if (!old || old.supersededBy === newer.id) continue;
+        old.status = 'superseded';
+        old.supersededBy = newer.id;
+        old.updatedAt = new Date().toISOString();
+        this.storage.wiki.saveDecision(old);
+      }
+    }
   }
 
   /**
