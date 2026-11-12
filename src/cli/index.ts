@@ -29,7 +29,9 @@ Usage:
   runlog install-plugin [plt] Install plugin (all | antigravity | claude | cursor | codex)
   runlog doctor               Verify all 4 platform plugins + live MCP JSON-RPC handshake
   runlog init [platform]      Initialize memory, scan codebase + history, and install project hooks
-  runlog scan [--alias name]  Scan existing codebase + past conversations across all 4 platforms
+  runlog scan [--alias name] [--force]
+                              Scan codebase + past conversations across all 4 platforms
+                              (--force re-imports every conversation, ignoring the unchanged-file cache)
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
@@ -242,7 +244,7 @@ Usage:
       console.log(`   - Historical RCAs:   ${res.rcasCreated}`);
 
       const importer = new HistoryImporter(storage, process.cwd());
-      const importRes = await importer.importProjectHistory({ aliases });
+      const importRes = await importer.importProjectHistory({ aliases, force: args.includes('--force') });
       console.log(`📜 Past conversations imported (All 4 Platforms):`);
       console.log(`   - Antigravity sessions: ${importRes.antigravitySessionsImported}`);
       console.log(`   - Claude Code sessions: ${importRes.claudeSessionsImported}`);
@@ -389,7 +391,9 @@ Usage:
   runlog setup                Install plugins across ALL 4 platforms & run full verification
   runlog doctor               Verify all 4 platform plugins + live MCP JSON-RPC handshake
   runlog init [platform]      Initialize memory, scan codebase + history, and install project hooks
-  runlog scan [--alias name]  Scan existing codebase + past conversations across all 4 platforms
+  runlog scan [--alias name] [--force]
+                              Scan codebase + past conversations across all 4 platforms
+                              (--force re-imports every conversation, ignoring the unchanged-file cache)
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
