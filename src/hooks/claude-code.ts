@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
+import { defaultCliCommand, mergeNestedHooks, nestedHookGroup } from './manifest.js';
 
 export interface ClaudeCodeHookConfig {
   sessionStartCommand: string;
@@ -17,66 +17,36 @@ export class ClaudeCodeHookAdapter {
     this.storage = storage;
   }
 
-  /**
-   * Generates the Claude Code hooks.json manifest
-   */
-  public generateHookManifest(cliBinPath: string = 'runlog'): Record<string, unknown> {
+  private commands(cli: string): Record<string, string> {
     return {
-      description: 'AgentRunlog typed engineering memory hook for Claude Code',
-      hooks: {
-        SessionStart: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook claude session-start`,
-          },
-        ],
-        UserPromptSubmit: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook claude prompt-submit`,
-          },
-        ],
-        PreToolUse: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook claude pre-tool-use`,
-          },
-        ],
-        PostToolUse: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook claude post-tool-use`,
-          },
-        ],
-        SessionEnd: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook claude session-end`,
-          },
-        ],
-        PreCompact: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook claude pre-compact`,
-          },
-        ],
-      },
+      SessionStart: `${cli} hook claude session-start`,
+      UserPromptSubmit: `${cli} hook claude prompt-submit`,
+      PreToolUse: `${cli} hook claude pre-tool-use`,
+      PostToolUse: `${cli} hook claude post-tool-use`,
+      SessionEnd: `${cli} hook claude session-end`,
+      PreCompact: `${cli} hook claude pre-compact`,
     };
   }
 
   /**
-   * Installs hooks.json into .claude/hooks.json in project root
+   * Generates the Claude Code hooks block (nested matcher-group format).
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = 'runlog'): string {
-    const claudeDir = join(projectRoot, '.claude');
-    if (!existsSync(claudeDir)) {
-      mkdirSync(claudeDir, { recursive: true });
+  public generateHookManifest(cliBinPath: string = defaultCliCommand()): Record<string, unknown> {
+    const hooks: Record<string, unknown> = {};
+    for (const [event, command] of Object.entries(this.commands(cliBinPath))) {
+      hooks[event] = nestedHookGroup(command);
     }
+    return { description: 'AgentRunlog typed engineering memory hook for Claude Code', hooks };
+  }
 
-    const manifestPath = join(claudeDir, 'hooks.json');
-    const manifest = this.generateHookManifest(cliBinPath);
-    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-    return manifestPath;
+  /**
+   * Installs hooks into <project>/.claude/settings.json (the file Claude Code actually reads),
+   * merging with whatever the user already has.
+   */
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
+    const settingsPath = join(projectRoot, '.claude', 'settings.json');
+    mergeNestedHooks(settingsPath, this.commands(cliBinPath));
+    return settingsPath;
   }
 
   /**

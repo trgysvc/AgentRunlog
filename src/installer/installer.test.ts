@@ -80,3 +80,16 @@ describe('UniversalPluginInstaller & SystemDoctor (All 4 Platforms)', () => {
     expect(report.checks.every((c) => c.ok)).toBe(true);
   });
 });
+
+describe('ensureCodexHooksFeature', () => {
+  it('never creates a duplicate [features] table', async () => {
+    const { ensureCodexHooksFeature } = await import('./plugin-installer.js');
+    const existing = 'model = "x"\n\n[features]\nfoo = true\n\n[mcp_servers.a]\ncommand = "a"\n';
+    const out = ensureCodexHooksFeature(existing);
+    expect(out.match(/\[features\]/g)).toHaveLength(1);
+    expect(out).toContain('[features]\nhooks = true\nfoo = true');
+    expect(ensureCodexHooksFeature(out)).toBe(out); // idempotent
+    expect(ensureCodexHooksFeature('[features]\nhooks = false\n')).toBe('[features]\nhooks = false\n'); // user value wins
+    expect(ensureCodexHooksFeature('model = "x"\n')).toContain('[features]\nhooks = true');
+  });
+});

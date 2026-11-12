@@ -1,3 +1,4 @@
+import { nestedHookGroup, readJsonStrict } from '../hooks/manifest.js';
 import {
   existsSync,
   mkdirSync,
@@ -36,6 +37,29 @@ function findPackageRoot(startDir: string): string {
   return resolve(startDir, '../..');
 }
 
+/**
+ * Makes sure `[features] hooks = true` exists without ever creating a second [features] table
+ * (duplicate tables make config.toml invalid). Existing user values are left untouched.
+ */
+export function ensureCodexHooksFeature(toml: string): string {
+  const lines = toml.split('\n');
+  const headerIdx = lines.findIndex((l) => /^\s*\[features\]\s*(#.*)?$/.test(l));
+  if (headerIdx === -1) {
+    return (toml.trimEnd() + '\n\n[features]\nhooks = true\n').trimStart();
+  }
+  let end = lines.length;
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    if (/^\s*\[/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  const hasKey = lines.slice(headerIdx + 1, end).some((l) => /^\s*hooks\s*=/.test(l));
+  if (hasKey) return toml;
+  lines.splice(headerIdx + 1, 0, 'hooks = true');
+  return lines.join('\n');
+}
+
 export class UniversalPluginInstaller {
   private home: string;
   private pkgRoot: string;
@@ -58,12 +82,20 @@ export class UniversalPluginInstaller {
    * Installs AgentRunlog globally across all 4 supported platforms
    */
   public installAll(): PlatformInstallResult[] {
-    return [
-      this.installAntigravity(),
-      this.installClaudeCode(),
-      this.installCursor(),
-      this.installCodex(),
+    const steps: Array<[PlatformInstallResult['platform'], () => PlatformInstallResult]> = [
+      ['antigravity', () => this.installAntigravity()],
+      ['claude', () => this.installClaudeCode()],
+      ['cursor', () => this.installCursor()],
+      ['codex', () => this.installCodex()],
     ];
+    // One platform failing (e.g. a corrupt user config we refuse to overwrite) must not block the others.
+    return steps.map(([platform, run]) => {
+      try {
+        return run();
+      } catch (err) {
+        return { platform, success: false, paths: [], notes: (err as Error).message };
+      }
+    });
   }
 
   /**
@@ -161,11 +193,7 @@ export class UniversalPluginInstaller {
     // 2B. MCP Server in ~/.claude.json (merge non-destructively)
     const claudeJsonPath = join(this.home, '.claude.json');
     let claudeJson: Record<string, any> = {};
-    if (existsSync(claudeJsonPath)) {
-      try {
-        claudeJson = JSON.parse(readFileSync(claudeJsonPath, 'utf8'));
-      } catch {}
-    }
+    claudeJson = readJsonStrict(claudeJsonPath);
     claudeJson.mcpServers = claudeJson.mcpServers || {};
     claudeJson.mcpServers.agentrunlog = {
       type: 'stdio',
@@ -178,11 +206,7 @@ export class UniversalPluginInstaller {
     // 2C. Hooks in ~/.claude/settings.json (merge non-destructively, idempotent)
     const settingsPath = join(claudeDir, 'settings.json');
     let settings: Record<string, any> = {};
-    if (existsSync(settingsPath)) {
-      try {
-        settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
-      } catch {}
-    }
+    settings = readJsonStrict(settingsPath);
     settings.hooks = settings.hooks || {};
 
     const claudeHookMap: Record<string, string> = {
@@ -225,11 +249,7 @@ export class UniversalPluginInstaller {
     // 3A. MCP Server in ~/.cursor/mcp.json
     const mcpPath = join(cursorDir, 'mcp.json');
     let mcpData: Record<string, any> = {};
-    if (existsSync(mcpPath)) {
-      try {
-        mcpData = JSON.parse(readFileSync(mcpPath, 'utf8'));
-      } catch {}
-    }
+    mcpData = readJsonStrict(mcpPath);
     mcpData.mcpServers = mcpData.mcpServers || {};
     mcpData.mcpServers.agentrunlog = {
       command: this.nodeExec,
@@ -241,11 +261,7 @@ export class UniversalPluginInstaller {
     // 3B. Hooks in ~/.cursor/hooks.json (merge non-destructively)
     const hooksPath = join(cursorDir, 'hooks.json');
     let hooksData: Record<string, any> = { version: 1, hooks: {} };
-    if (existsSync(hooksPath)) {
-      try {
-        hooksData = JSON.parse(readFileSync(hooksPath, 'utf8'));
-      } catch {}
-    }
+    hooksData = readJsonStrict(hooksPath);
     hooksData.version = hooksData.version || 1;
     hooksData.hooks = hooksData.hooks || {};
 
@@ -295,11 +311,7 @@ export class UniversalPluginInstaller {
     // 4A. Hooks in ~/.codex/hooks.json
     const hooksPath = join(codexDir, 'hooks.json');
     let hooksData: Record<string, any> = { description: 'Codex CLI hooks', hooks: {} };
-    if (existsSync(hooksPath)) {
-      try {
-        hooksData = JSON.parse(readFileSync(hooksPath, 'utf8'));
-      } catch {}
-    }
+    hooksData = readJsonStrict(hooksPath);
     hooksData.hooks = hooksData.hooks || {};
 
     const codexHookMap: Record<string, string> = {
@@ -316,7 +328,7 @@ export class UniversalPluginInstaller {
         const entryStr = JSON.stringify(entry);
         return !entryStr.includes('agentrunlog') && !entryStr.includes('runlog hook');
       });
-      filtered.push({ type: 'command', command: cmd });
+      filtered.push(...nestedHookGroup(cmd));
       hooksData.hooks[event] = filtered;
     }
 
@@ -330,18 +342,17 @@ export class UniversalPluginInstaller {
     // Remove previous AgentRunlog managed block if present
     toml = toml.replace(/\n?# BEGIN AGENTRUNLOG MANAGED[\s\S]*?# END AGENTRUNLOG MANAGED\n?/g, '');
 
+    toml = ensureCodexHooksFeature(toml);
+
     const managedBlock = [
       '',
       '# BEGIN AGENTRUNLOG MANAGED',
-      !toml.includes('hooks = true') ? '[features]\nhooks = true\n' : '',
       '[mcp_servers.agentrunlog]',
       `command = "${this.nodeExec.replace(/\\/g, '\\\\')}"`,
       `args = ["${this.cliEntry.replace(/\\/g, '\\\\')}", "mcp"]`,
       '# END AGENTRUNLOG MANAGED',
       '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+    ].join('\n');
 
     writeFileSync(configTomlPath, toml.trimEnd() + '\n' + managedBlock, 'utf8');
     writtenPaths.push(configTomlPath);

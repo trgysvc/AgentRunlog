@@ -119,3 +119,49 @@ describe('Platform Hook Adapters (Claude Code, Antigravity, Cursor, Codex)', () 
     expect(blockedPush).toBeNull();
   });
 });
+
+describe('Hook manifests use the nested matcher-group format', () => {
+  it('Claude + Codex manifests nest commands under hooks[] and use absolute node paths', async () => {
+    const { mkdtempSync, readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { StorageManager } = await import('../storage/index.js');
+    const { HookManager } = await import('./index.js');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_manifest_'));
+    const hm = new HookManager(new StorageManager(dir));
+
+    // Pre-existing user hook must survive and install must be idempotent
+    mkdirSync(join(dir, '.claude'), { recursive: true });
+    writeFileSync(
+      join(dir, '.claude', 'settings.json'),
+      JSON.stringify({ theme: 'dark', hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } })
+    );
+    hm.claude.install(dir);
+    hm.claude.install(dir);
+    const claude = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
+    expect(claude.theme).toBe('dark');
+    expect(claude.hooks.SessionStart).toHaveLength(2);
+    expect(claude.hooks.SessionStart[0].hooks[0].command).toBe('echo mine');
+    const ours = claude.hooks.SessionStart[1].hooks[0];
+    expect(ours.type).toBe('command');
+    expect(ours.command).toMatch(/^"\/.*node.*" ".*dist\/cli\/index\.js" hook claude session-start$/);
+
+    const codex = JSON.parse(readFileSync(hm.codex.install(dir), 'utf8'));
+    expect(codex.hooks.Stop[0].hooks[0].command).toContain('hook codex stop');
+    expect(codex.hooks.Stop[0].type).toBeUndefined();
+  });
+
+  it('refuses to overwrite a corrupt settings.json', async () => {
+    const { mkdtempSync, writeFileSync, mkdirSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { StorageManager } = await import('../storage/index.js');
+    const { HookManager } = await import('./index.js');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_corrupt_'));
+    mkdirSync(join(dir, '.claude'), { recursive: true });
+    writeFileSync(join(dir, '.claude', 'settings.json'), '{ not json');
+    const hm = new HookManager(new StorageManager(dir));
+    expect(() => hm.claude.install(dir)).toThrow(/not valid JSON/);
+    expect(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8')).toBe('{ not json');
+  });
+});

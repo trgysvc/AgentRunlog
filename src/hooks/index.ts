@@ -31,7 +31,7 @@ export class HookManager {
    */
   public installAll(
     projectRoot: string = process.cwd(),
-    cliBinPath: string = 'runlog'
+    cliBinPath?: string
   ): Record<string, string | { hooksPath: string; rulesPath: string }> {
     return {
       claude: this.claude.install(projectRoot, cliBinPath),

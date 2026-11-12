@@ -163,13 +163,13 @@ Usage:
       const platformArg = rawArg && !rawArg.startsWith('--') ? rawArg : undefined;
       if (!platformArg || platformArg === 'all') {
         hooks.installAll();
-        console.log('✅ Installed hooks for Claude Code (.claude/hooks.json)');
+        console.log('✅ Installed hooks for Claude Code (.claude/settings.json)');
         console.log('✅ Installed hooks for Google Antigravity (.agents/hooks.json)');
         console.log('✅ Installed hooks & rules for Cursor (.cursor/hooks.json & .cursorrules)');
         console.log('✅ Installed hooks for Codex CLI (.codex/hooks.json)');
       } else if (platformArg === 'claude') {
         hooks.claude.install();
-        console.log('✅ Installed Claude Code hook (.claude/hooks.json)');
+        console.log('✅ Installed Claude Code hook (.claude/settings.json)');
       } else if (platformArg === 'antigravity') {
         hooks.antigravity.install();
         console.log('✅ Installed Google Antigravity hook (.agents/hooks.json)');
@@ -336,9 +336,12 @@ Usage:
 
     case 'reindex': {
       console.log('🔄 Re-indexing knowledge base from raw transcripts (NFR-10)...');
-      const reindexer = new WikiReindexer(storage);
-      const res = reindexer.reindex();
-      console.log(`✅ Processed ${res.processedSessions} session(s) in ${res.durationMs}ms.`);
+      const reindexer = new WikiReindexer(storage, storage.config.compiler as any);
+      const res = await reindexer.reindex();
+      console.log(
+        `✅ Processed ${res.processedSessions} session(s), ${res.totalRecordsGenerated} record(s) re-extracted, ${res.retainedRecords} non-transcript record(s) kept, in ${res.durationMs}ms.`
+      );
+      if (res.backupDir) console.log(`🗂️  Previous wiki backed up to ${res.backupDir}`);
       console.log('✨ Memory cache and wiki index updated successfully.');
       break;
     }

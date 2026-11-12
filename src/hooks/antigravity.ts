@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
+import { defaultCliCommand } from './manifest.js';
 
 export class AntigravityHookAdapter {
   private storage: StorageManager;
@@ -12,7 +13,7 @@ export class AntigravityHookAdapter {
   /**
    * Generates the Google Antigravity hooks.json manifest
    */
-  public generateHookManifest(cliBinPath: string = 'runlog'): Record<string, unknown> {
+  public generateHookManifest(cliBinPath: string = defaultCliCommand()): Record<string, unknown> {
     return {
       description: 'AgentRunlog typed engineering memory hook for Google Antigravity',
       hooks: {
@@ -53,7 +54,7 @@ export class AntigravityHookAdapter {
   /**
    * Installs hooks.json into .agents/hooks.json in project root
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = 'runlog'): string {
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
     const agentsDir = join(projectRoot, '.agents');
     if (!existsSync(agentsDir)) {
       mkdirSync(agentsDir, { recursive: true });

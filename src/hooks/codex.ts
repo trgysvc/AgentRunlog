@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
+import { defaultCliCommand, mergeNestedHooks, nestedHookGroup } from './manifest.js';
 
 export class CodexHookAdapter {
   private storage: StorageManager;
@@ -9,58 +9,33 @@ export class CodexHookAdapter {
     this.storage = storage;
   }
 
-  /**
-   * Generates the Codex CLI hooks.json manifest
-   */
-  public generateHookManifest(cliBinPath: string = 'runlog'): Record<string, unknown> {
+  private commands(cli: string): Record<string, string> {
     return {
-      description: 'AgentRunlog typed engineering memory hook for OpenAI Codex CLI',
-      hooks: {
-        SessionStart: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook codex session-start`,
-          },
-        ],
-        UserPromptSubmit: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook codex prompt-submit`,
-          },
-        ],
-        PreToolUse: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook codex pre-tool-use`,
-          },
-        ],
-        PostToolUse: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook codex post-tool-use`,
-          },
-        ],
-        Stop: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook codex stop`,
-          },
-        ],
-      },
+      SessionStart: `${cli} hook codex session-start`,
+      UserPromptSubmit: `${cli} hook codex prompt-submit`,
+      PreToolUse: `${cli} hook codex pre-tool-use`,
+      PostToolUse: `${cli} hook codex post-tool-use`,
+      Stop: `${cli} hook codex stop`,
     };
   }
 
   /**
-   * Installs hooks.json into .codex/hooks.json in project root
+   * Generates the Codex CLI hooks.json manifest (matcher groups with nested hooks).
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = 'runlog'): string {
-    const codexDir = join(projectRoot, '.codex');
-    if (!existsSync(codexDir)) {
-      mkdirSync(codexDir, { recursive: true });
+  public generateHookManifest(cliBinPath: string = defaultCliCommand()): Record<string, unknown> {
+    const hooks: Record<string, unknown> = {};
+    for (const [event, command] of Object.entries(this.commands(cliBinPath))) {
+      hooks[event] = nestedHookGroup(command);
     }
+    return { description: 'AgentRunlog typed engineering memory hook for OpenAI Codex CLI', hooks };
+  }
 
-    const manifestPath = join(codexDir, 'hooks.json');
-    writeFileSync(manifestPath, JSON.stringify(this.generateHookManifest(cliBinPath), null, 2), 'utf8');
+  /**
+   * Installs hooks into <project>/.codex/hooks.json, merging with existing hooks.
+   */
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
+    const manifestPath = join(projectRoot, '.codex', 'hooks.json');
+    mergeNestedHooks(manifestPath, this.commands(cliBinPath));
     return manifestPath;
   }
 

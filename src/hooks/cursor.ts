@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
+import { defaultCliCommand } from './manifest.js';
 
 export class CursorHookAdapter {
   private storage: StorageManager;
@@ -12,7 +13,7 @@ export class CursorHookAdapter {
   /**
    * Generates the Cursor hooks.json manifest
    */
-  public generateHookManifest(cliBinPath: string = 'runlog'): Record<string, unknown> {
+  public generateHookManifest(cliBinPath: string = defaultCliCommand()): Record<string, unknown> {
     return {
       version: 1,
       hooks: {
@@ -80,7 +81,7 @@ To prevent repeating past mistakes and to preserve architectural decisions:
   /**
    * Installs hooks.json and .cursorrules into the project
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = 'runlog'): {
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): {
     hooksPath: string;
     rulesPath: string;
   } {
