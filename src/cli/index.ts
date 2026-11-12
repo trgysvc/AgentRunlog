@@ -7,6 +7,7 @@ import { WikiReindexer } from '../compiler/reindex.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
 import { CodebaseScanner } from '../compiler/scanner.js';
 import { HistoryImporter } from '../compiler/history-importer.js';
+import { IMPORT_VERSION } from '../compiler/import-version.js';
 import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/auto-bootstrap.js';
 import { HookManager } from '../hooks/index.js';
 import { formatHookOutput } from '../hooks/light.js';
@@ -124,6 +125,31 @@ Usage:
         await ensureProjectBootstrapped(process.cwd());
       } finally {
         releaseBootstrap();
+      }
+    }
+    return;
+  }
+
+  if (command === 'sync-history') {
+    // Detached background worker started by the SessionStart hook: incremental, never touches originals.
+    if (isValidProjectDirectory(process.cwd())) {
+      const st = new StorageManager();
+      const release = acquireLock(join(st.paths.cache, 'history.lock'));
+      if (!release) return;
+      try {
+        const res = await new HistoryImporter(st, process.cwd()).importProjectHistory();
+        const releaseCompile = res.importedFiles.length > 0 ? acquireLock(join(st.paths.cache, 'compile.lock')) : null;
+        if (releaseCompile) {
+          try {
+            const extractor = new TranscriptExtractor(st, st.config.compiler as any);
+            for (const f of res.importedFiles) await extractor.extractAndCompile(join(st.paths.raw, f));
+          } finally {
+            releaseCompile();
+          }
+        }
+        writeFileSync(join(st.paths.cache, 'history_sync.json'), JSON.stringify({ at: Date.now(), version: IMPORT_VERSION }), 'utf8');
+      } finally {
+        release();
       }
     }
     return;

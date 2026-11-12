@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { IMPORT_VERSION } from './import-version.js';
 import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import { type StorageManager } from '../storage/index.js';
@@ -59,12 +60,13 @@ export class HistoryImporter {
     try {
       if (existsSync(this.stateFilePath)) {
         const parsed = JSON.parse(readFileSync(this.stateFilePath, 'utf8'));
-        if (parsed && typeof parsed.files === 'object') {
+        // An older import version means its copies may be incomplete: start over (re-import all).
+        if (parsed && typeof parsed.files === 'object' && parsed.version === IMPORT_VERSION) {
           return parsed as ImportStateCache;
         }
       }
     } catch {}
-    return { version: 1, files: {} };
+    return { version: IMPORT_VERSION, files: {} };
   }
 
   private saveImportState(state: ImportStateCache): void {
@@ -129,7 +131,7 @@ export class HistoryImporter {
   public async importProjectHistory(options: ImportHistoryOptions = {}): Promise<ImportHistoryResult> {
     const projectName = basename(this.projectRoot);
     const { matchTerms, aliases } = this.buildProjectMatchTerms(projectName, options.aliases);
-    const state = options.force ? { version: 1, files: {} } : this.loadImportState();
+    const state = options.force ? { version: IMPORT_VERSION, files: {} } : this.loadImportState();
 
     const antigravityDir =
       options.antigravityBrainDir || join(homedir(), '.gemini', 'antigravity', 'brain');
@@ -313,10 +315,15 @@ export class HistoryImporter {
   private writeImportedSession(sessionId: string, events: RawSessionEvent[]): number {
     if (events.length === 0) return 0; // never wipe an earlier import for an empty parse
     const targetRaw = join(this.storage.paths.raw, `session-${sessionId}.jsonl`);
-    if (existsSync(targetRaw)) {
+    // Our own copy is only replaced once the new one is complete; the platform's original is never touched.
+    const prev = `${targetRaw}.prev`;
+    const hadPrev = existsSync(targetRaw);
+    if (hadPrev) {
       try {
-        unlinkSync(targetRaw);
-      } catch {}
+        renameSync(targetRaw, prev);
+      } catch {
+        return 0;
+      }
     }
 
     let written = 0;
@@ -325,6 +332,18 @@ export class HistoryImporter {
       if (this.storage.logger.logEvent(ev, { trustedImport: true })) {
         written++;
       }
+    }
+    if (hadPrev) {
+      try {
+        if (written === events.length) {
+          unlinkSync(prev);
+        } else {
+          // incomplete write: keep the earlier copy
+          if (existsSync(targetRaw)) unlinkSync(targetRaw);
+          renameSync(prev, targetRaw);
+          return 0;
+        }
+      } catch {}
     }
     return written;
   }

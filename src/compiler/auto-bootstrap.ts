@@ -4,6 +4,7 @@ import { StorageManager } from '../storage/index.js';
 import { CodebaseScanner } from './scanner.js';
 import { HistoryImporter } from './history-importer.js';
 import { TranscriptExtractor } from './extractor.js';
+import { IMPORT_VERSION } from './import-version.js';
 
 export { isValidProjectDirectory } from './project-dir.js';
 
@@ -53,6 +54,7 @@ export async function ensureProjectBootstrapped(projectRoot: string): Promise<{
 
   // 4. Write bootstrap completion marker
   try {
+    writeFileSync(join(storage.paths.cache, 'history_sync.json'), JSON.stringify({ at: Date.now(), version: IMPORT_VERSION }), 'utf8');
     writeFileSync(markerPath, new Date().toISOString(), 'utf8');
   } catch {}
 

@@ -8,6 +8,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeF
 import { dirname, join } from 'node:path';
 import { defaultSanitizer } from '../sanitizer/index.js';
 import { formatPushText } from '../storage/push-format.js';
+import { HISTORY_SYNC_INTERVAL_MS, IMPORT_VERSION } from '../compiler/import-version.js';
 import { isLockFresh } from '../storage/lock.js';
 
 export type NormalizedPlatform = 'claude_code' | 'antigravity' | 'cursor' | 'codex';
@@ -154,6 +155,14 @@ export function runLightHook(input: LightHookInput): string | null {
   if (!bootstrapDone) {
     if (!isLockFresh(join(cacheDir, 'bootstrap.lock'))) spawnWorker(input.cliPath, 'bootstrap', env, projectDir);
     return push;
+  }
+
+  // Automatic history sync: at most every 30 min, and immediately when the import version is outdated.
+  if (mapped === 'session_start' && !isLockFresh(join(cacheDir, 'history.lock'))) {
+    const sync = readJson(join(cacheDir, 'history_sync.json'));
+    if (!sync || sync.version !== IMPORT_VERSION || Date.now() - Number(sync.at || 0) > HISTORY_SYNC_INTERVAL_MS) {
+      spawnWorker(input.cliPath, 'sync-history', env, projectDir);
+    }
   }
 
   const turnEvent = mapped === 'prompt_submit';

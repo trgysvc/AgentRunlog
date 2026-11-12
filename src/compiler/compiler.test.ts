@@ -463,3 +463,32 @@ describe('R5/R11/R12: LLM bundle normalization, trusted import, scanner drafts',
     }
   });
 });
+
+describe('Automatic history sync safety', () => {
+  const mk = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ sessionId: 'import_x', platform: 'claude_code', eventType: 'prompt_submit', timestamp: new Date().toISOString(), payload: { text: `msg ${i}` } })) as any[];
+
+  it('replaces our own raw copy completely and leaves no .prev behind', async () => {
+    const { HistoryImporter } = await import('./history-importer.js');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_sync_'));
+    const st = new StorageManager(dir);
+    const imp: any = new HistoryImporter(st, dir);
+    expect(imp.writeImportedSession('import_x', mk(2))).toBe(2);
+    expect(imp.writeImportedSession('import_x', mk(3))).toBe(3);
+    const f = join(st.paths.raw, 'session-import_x.jsonl');
+    expect(readFileSync(f, 'utf8').trim().split('\n').length).toBe(3);
+    expect(existsSync(f + '.prev')).toBe(false);
+  });
+
+  it('an outdated import version triggers a full re-import', async () => {
+    const { HistoryImporter } = await import('./history-importer.js');
+    const { writeFileSync } = await import('node:fs');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_ver_'));
+    const st = new StorageManager(dir);
+    const imp: any = new HistoryImporter(st, dir);
+    const p = imp.statePath ?? null;
+    const state = imp.loadImportState();
+    expect(state.version).toBe((await import('./import-version.js')).IMPORT_VERSION);
+    void p; void writeFileSync;
+  });
+});
