@@ -311,6 +311,7 @@ export class HistoryImporter {
   }
 
   private writeImportedSession(sessionId: string, events: RawSessionEvent[]): number {
+    if (events.length === 0) return 0; // never wipe an earlier import for an empty parse
     const targetRaw = join(this.storage.paths.raw, `session-${sessionId}.jsonl`);
     if (existsSync(targetRaw)) {
       try {
@@ -321,7 +322,7 @@ export class HistoryImporter {
     let written = 0;
     for (const ev of events) {
       ev.sessionId = sessionId;
-      if (this.storage.logger.logEvent(ev)) {
+      if (this.storage.logger.logEvent(ev, { trustedImport: true })) {
         written++;
       }
     }

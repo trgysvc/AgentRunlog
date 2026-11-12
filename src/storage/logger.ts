@@ -17,9 +17,10 @@ export class SessionLogger {
    * Log an event to raw JSONL stream atomically with secret redaction.
    * Enforces NFR-09 (Recursion protection) and NFR-01 (Sanitization).
    */
-  public logEvent(event: RawSessionEvent): boolean {
-    // 1. NFR-09: Double-layer recursion protection
-    if (process.env.AGENTRUNLOG_INTERNAL === '1' || process.env.AGENTRUNLOG_SKIP === '1') {
+  public logEvent(event: RawSessionEvent, opts: { trustedImport?: boolean } = {}): boolean {
+    // 1. NFR-09: Double-layer recursion protection. A trusted history import runs inside our own
+    //    bootstrap worker (AGENTRUNLOG_INTERNAL=1) and replays user history, not compiler traffic.
+    if (!opts.trustedImport && (process.env.AGENTRUNLOG_INTERNAL === '1' || process.env.AGENTRUNLOG_SKIP === '1')) {
       return false;
     }
     if (event.caller === 'agentrunlog-compiler') {

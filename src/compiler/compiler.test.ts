@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rmSync, existsSync, readFileSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { StorageManager } from '../storage/index.js';
@@ -308,7 +308,9 @@ describe('Compiler & Linter Engine', () => {
     expect(result.decisionsCreated).toBeGreaterThanOrEqual(2);
 
     const cache = storage.cache.getActiveContext();
-    expect(cache?.activeDecisions.length).toBeGreaterThanOrEqual(2);
+    // R12: scanner facts are unverified drafts and must not consume the push budget
+    expect(cache?.activeDecisions.length).toBe(0);
+    expect(storage.wiki.listDecisions().filter((d) => d.status === 'draft').length).toBeGreaterThanOrEqual(2);
     expect(existsSync(join(storage.paths.wiki, 'modules', 'src_audio.md'))).toBe(true);
   });
 
@@ -449,5 +451,48 @@ describe('FR-05 / FR-06 / NFR-08 enforcement', () => {
     const n = normalizeToolPayload({ tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stderr: 'boom', exit_code: 1 } });
     expect(n.command).toBe('npm test');
     expect(n.error).toBe('boom');
+  });
+});
+
+describe('R5/R11/R12: LLM bundle normalization, trusted import, scanner drafts', () => {
+  it('normalizeLlmBundle fills evidence from the real event and drafts invalid turns', async () => {
+    const { normalizeLlmBundle } = await import('./llm-client.js');
+    const { hasCompleteEvidence } = await import('./evidence.js');
+    const events: any[] = [
+      { sessionId: 's1', platform: 'claude_code', eventType: 'prompt_submit', timestamp: '2026-01-01T00:00:00Z', payload: { text: 'a' } },
+      { sessionId: 's1', platform: 'claude_code', eventType: 'agent_response', timestamp: '2026-01-01T00:00:01Z', payload: { text: 'b' } },
+    ];
+    const bundle = normalizeLlmBundle(
+      {
+        decisions: [
+          { id: 'DEC-001', title: 'Use X', context: 'c', choice: 'x', evidence: { turnIndex: 2 } },
+          { id: 'DEC-001', title: 'Use Y', context: 'c', choice: 'y', evidence: { turnIndex: 99 } },
+        ],
+        rcas: [],
+        deadEnds: [],
+        tasks: [],
+      } as any,
+      events
+    );
+    const [a, b] = bundle.decisions;
+    expect(a.id).not.toBe('DEC-001');
+    expect(a.id).not.toBe(b.id);
+    expect(hasCompleteEvidence(a.evidence)).toBe(true);
+    expect(a.evidence.sessionId).toBe('s1');
+    expect(a.evidence.timestamp).toBe('2026-01-01T00:00:01Z');
+    expect(hasCompleteEvidence(b.evidence)).toBe(false);
+  });
+
+  it('trusted import writes events even under AGENTRUNLOG_INTERNAL', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_imp_'));
+    const st = new StorageManager(dir);
+    const ev: any = { sessionId: 'import_1', platform: 'claude_code', eventType: 'prompt_submit', timestamp: new Date().toISOString(), payload: { text: 'hi' } };
+    process.env.AGENTRUNLOG_INTERNAL = '1';
+    try {
+      expect(st.logger.logEvent(ev)).toBe(false);
+      expect(st.logger.logEvent(ev, { trustedImport: true })).toBe(true);
+    } finally {
+      delete process.env.AGENTRUNLOG_INTERNAL;
+    }
   });
 });

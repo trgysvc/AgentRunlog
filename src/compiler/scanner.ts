@@ -88,11 +88,12 @@ export class CodebaseScanner {
     this.scanGitHistory(rcas, tasks, evidence, now);
 
     // 5. Save all bootstrapped records & rebuild index + cache
+    // Scanned facts have no transcript evidence (FR-06): keep them as drafts so they never crowd the push budget.
     for (const dec of decisions) {
-      this.storage.wiki.saveDecision(dec);
+      this.storage.wiki.saveDecision({ ...dec, status: 'draft' });
     }
     for (const rca of rcas) {
-      this.storage.wiki.saveRCA(rca);
+      this.storage.wiki.saveRCA({ ...rca, status: 'draft' });
     }
     for (const task of tasks) {
       this.storage.wiki.saveTask(task);
@@ -103,7 +104,7 @@ export class CodebaseScanner {
       this.storage.wiki.saveDecision({
         id: bootId('DEC', 'project-structure'),
         title: 'Established Project Directory Structure',
-        status: 'active',
+        status: 'draft',
         decidedBy: 'existing-codebase',
         author: 'team',
         context: 'Initial codebase scan discovered active project modules.',

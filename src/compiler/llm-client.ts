@@ -26,6 +26,47 @@ function deterministicShortId(seed: string): string {
   return createHash('sha256').update(seed).digest('hex').slice(0, 6).toUpperCase();
 }
 
+/**
+ * Makes an LLM-produced bundle storable: the model only has to say WHICH turn a record is about.
+ * Code fills sessionId/line/hash/timestamp from the real raw event (FR-06), assigns collision-free
+ * deterministic ids (the model cannot know existing ids) and default timestamps. A record whose
+ * turnIndex does not point at a real event keeps incomplete evidence and is stored as draft.
+ */
+export function normalizeLlmBundle(bundle: ExtractedBundle, events: RawSessionEvent[]): ExtractedBundle {
+  if (events.length === 0) return bundle;
+  const sessionId = events[0].sessionId;
+  const now = new Date().toISOString();
+  const fix = (rec: any, prefix: string, kind: string): any => {
+    if (!rec || typeof rec !== 'object') return rec;
+    const rawEv = rec.evidence && typeof rec.evidence === 'object' ? rec.evidence : {};
+    const turn = Number(rawEv.turnIndex ?? rec.turnIndex);
+    const valid = Number.isInteger(turn) && turn >= 1 && turn <= events.length;
+    const event = valid ? events[turn - 1] : undefined;
+    const evidence: Record<string, unknown> = {
+      sessionId,
+      timestamp: event?.timestamp ?? now,
+      ...(typeof rawEv.snippet === 'string' ? { snippet: rawEv.snippet.slice(0, 300) } : {}),
+    };
+    if (event) Object.assign(evidence, { turnIndex: turn, line: turn, hash: eventHash(event) });
+    const seed = String(rec.title ?? rec.incident ?? rec.approach ?? JSON.stringify(rec).slice(0, 80));
+    const out = {
+      ...rec,
+      id: `${prefix}-${deterministicShortId(`${sessionId}:${kind}:${seed}`)}`,
+      evidence,
+      createdAt: rec.createdAt ?? now,
+    };
+    if (kind === 'dec') out.updatedAt = rec.updatedAt ?? now;
+    delete out.turnIndex;
+    return out;
+  };
+  return {
+    decisions: bundle.decisions.map((r) => fix(r, 'DEC', 'dec')),
+    rcas: bundle.rcas.map((r) => fix(r, 'RCA', 'rca')),
+    deadEnds: bundle.deadEnds.map((r) => fix(r, 'DEAD', 'dead')),
+    tasks: bundle.tasks.map((r) => fix(r, 'TASK', 'task')),
+  };
+}
+
 export type ResolvedProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'heuristic';
 
 export interface LLMClientConfig {
@@ -111,7 +152,7 @@ export class LLMCompilerClient {
         rawResponse = await this.callOpenAICompatible(prompt);
       }
 
-      return this.parseJSONBundle(rawResponse);
+      return normalizeLlmBundle(this.parseJSONBundle(rawResponse), events);
     } catch (err) {
       console.warn('LLM compilation request failed, falling back to heuristic extraction:', err);
       return this.heuristicFallbackExtract(events);
@@ -120,7 +161,7 @@ export class LLMCompilerClient {
 
   private async callOpenAICompatible(prompt: string): Promise<string> {
     const endpoint = this.config.endpoint || 'https://api.openai.com/v1/chat/completions';
-    const model = this.config.model || 'gpt-4o-mini';
+    const model = this.config.model || 'gpt-5-mini';
 
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -145,7 +186,7 @@ export class LLMCompilerClient {
 
   private async callAnthropic(prompt: string): Promise<string> {
     const endpoint = this.config.endpoint || 'https://api.anthropic.com/v1/messages';
-    const model = this.config.model || 'claude-3-5-haiku-20241022';
+    const model = this.config.model || 'claude-haiku-5-5';
 
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -171,7 +212,7 @@ export class LLMCompilerClient {
   }
 
   private async callGemini(prompt: string): Promise<string> {
-    const model = this.config.model || 'gemini-1.5-flash';
+    const model = this.config.model || 'gemini-3-flash';
     const endpoint =
       this.config.endpoint ||
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`;

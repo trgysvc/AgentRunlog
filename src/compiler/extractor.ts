@@ -56,22 +56,26 @@ export class TranscriptExtractor {
    * Builds Karpathy LLM Wiki compiler prompt based on schema.md
    */
   public buildCompilerPrompt(events: RawSessionEvent[]): string {
+    const sessionId = events[0]?.sessionId ?? 'unknown';
     const formattedEvents = events.map((e, idx) => {
       return `Turn ${idx + 1} [${e.eventType} - ${e.timestamp}]:\n${JSON.stringify(e.payload, null, 2)}`;
     }).join('\n\n');
 
-    return `You are the AgentRunlog Compiler Worker. Your job is to transform raw coding agent transcripts into typed engineering memory records in JSON format according to schema.md.
+    return `You are the AgentRunlog Compiler Worker. Transform the raw coding-agent transcript (session "${sessionId}") into typed engineering memory records.
 
 CRITICAL RULES:
-1. STRICT EVIDENCE: Every record must reference the turn index and timestamp from the transcript.
-2. NO FALSE DEAD-ENDS (FR-05, FR-20): Do NOT record transient network failures, temporary rate limits, or syntax mistakes as DeadEnds. Only architectural or incompatibility failures qualify. Every DeadEnd MUST specify "retryConditions".
-3. SUPERSEDES: If an extracted decision replaces an earlier known decision, include the superseded decision ID in "supersedes".
-4. OUTPUT FORMAT: Output valid JSON only, matching the following structure:
+1. STRICT EVIDENCE: every record must carry "evidence": {"turnIndex": <the Turn number it comes from>, "snippet": "<short quote>"}. Use only Turn numbers that appear below. Never invent turns.
+2. NO FALSE DEAD-ENDS (FR-05, FR-20): do NOT record transient network failures, rate limits, timeouts or syntax/typo mistakes as deadEnds. Only architectural or incompatibility failures qualify, and each MUST have "retryConditions".
+3. SUPERSEDES: if a decision replaces an earlier known decision, put that decision's id in "supersedes"; otherwise [].
+4. Do NOT put ids, sessionId, timestamps or hashes in records; the system assigns them.
+5. Record only what the transcript actually shows. Empty arrays are fine.
+
+OUTPUT: valid JSON only (no prose, no code fences), exactly this shape:
 {
-  "decisions": [...],
-  "rcas": [...],
-  "deadEnds": [...],
-  "tasks": [...]
+  "decisions": [{"title": str, "context": str, "choice": str, "consequences": str?, "decidedBy": "user"|"agent", "author": "user"|"agent"|"team", "affectsModules": [str], "supersedes": [str], "confidence": "high"|"medium"|"low", "evidence": {...}}],
+  "rcas": [{"title": str, "incident": str, "rootCause": str, "resolution": str, "preventativeActions": [str], "affectsFiles": [str], "confidence": "high"|"medium"|"low", "evidence": {...}}],
+  "deadEnds": [{"title": str, "rootCauseType": "architectural"|"limitation"|"incompatibility", "approach": str, "whyFailed": str, "retryConditions": str, "affectsModules": [str], "confidence": "high"|"medium"|"low", "evidence": {...}}],
+  "tasks": [{"title": str, "summary": str, "filesModified": [str], "status": "completed"|"in_progress"|"abandoned", "evidence": {...}}]
 }
 
 TRANSCRIPT TURNS:
@@ -190,6 +194,7 @@ ${formattedEvents}
     const recentDeadEnds = this.storage.wiki
       .listDeadEnds()
       .filter((d) => ok(d.confidence) && d.status !== 'draft')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 5)
       .map((de) => ({
         id: de.id,
@@ -203,6 +208,7 @@ ${formattedEvents}
     const activeDecisions = this.storage.wiki
       .listDecisions()
       .filter((x) => x.status === 'active' && ok(x.confidence) && !x.supersededBy)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((d) => ({
         id: d.id,
         title: d.title.slice(0, 80),
