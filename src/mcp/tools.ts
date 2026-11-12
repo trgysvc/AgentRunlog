@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { StorageManager } from '../storage/index.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
+import { defaultSanitizer } from '../sanitizer/index.js';
 import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/auto-bootstrap.js';
 import { type Decision, type RCA, type DeadEnd } from '../types/schemas.js';
 
@@ -17,6 +18,17 @@ export interface CheckDeadEndsParams {
   approach: string;
   module?: string;
   projectRoot?: string;
+}
+
+/** Next free id: highest numeric suffix + 1 (count-based ids collide after deletions or mixed id schemes). */
+export function nextRecordId(prefix: string, ids: string[]): string {
+  let max = 0;
+  const re = new RegExp(`^${prefix}-(\\d+)$`);
+  for (const id of ids) {
+    const m = re.exec(id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `${prefix}-${String(max + 1).padStart(3, '0')}`;
 }
 
 const STOP_WORDS = new Set([
@@ -289,15 +301,16 @@ export class RunlogMcpTools {
     sessionId?: string;
     projectRoot?: string;
   }): Decision {
+    params = defaultSanitizer.redactObject(params); // NFR-01: MCP inputs are secrets-prone too
     const storage = this.getStorage(params.projectRoot);
     const existing = storage.wiki.listDecisions();
-    const nextNum = existing.length + 1;
-    const id = `DEC-${String(nextNum).padStart(3, '0')}`;
+    const id = nextRecordId('DEC', existing.map((r) => r.id));
     const now = new Date().toISOString();
 
-    const supersedesList = params.supersedes || [];
-    for (const oldId of supersedesList) {
+    const supersedesList: string[] = [];
+    for (const oldId of params.supersedes || []) {
       const oldDec = existing.find((d) => d.id.toLowerCase() === oldId.toLowerCase());
+      supersedesList.push(oldDec ? oldDec.id : oldId);
       if (oldDec) {
         oldDec.status = 'superseded';
         oldDec.supersededBy = id;
@@ -346,10 +359,10 @@ export class RunlogMcpTools {
     sessionId?: string;
     projectRoot?: string;
   }): DeadEnd {
+    params = defaultSanitizer.redactObject(params); // NFR-01: MCP inputs are secrets-prone too
     const storage = this.getStorage(params.projectRoot);
     const existing = storage.wiki.listDeadEnds();
-    const nextNum = existing.length + 1;
-    const id = `DEAD-${String(nextNum).padStart(3, '0')}`;
+    const id = nextRecordId('DEAD', existing.map((r) => r.id));
     const now = new Date().toISOString();
 
     const deadEnd: DeadEnd = {
@@ -387,10 +400,10 @@ export class RunlogMcpTools {
     sessionId?: string;
     projectRoot?: string;
   }): RCA {
+    params = defaultSanitizer.redactObject(params); // NFR-01: MCP inputs are secrets-prone too
     const storage = this.getStorage(params.projectRoot);
     const existing = storage.wiki.listRCAs();
-    const nextNum = existing.length + 1;
-    const id = `RCA-${String(nextNum).padStart(3, '0')}`;
+    const id = nextRecordId('RCA', existing.map((r) => r.id));
     const now = new Date().toISOString();
 
     const rca: RCA = {

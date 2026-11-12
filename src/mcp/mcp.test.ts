@@ -155,3 +155,20 @@ describe('RunlogMcpTools', () => {
     expect(newRca.id).toBe('RCA-002');
   });
 });
+
+describe('MCP record ids and input hygiene (R9)', () => {
+  it('never reuses an id after gaps and redacts secrets in inputs', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { StorageManager } = await import('../storage/index.js');
+    const { RunlogMcpTools, nextRecordId } = await import('./tools.js');
+    expect(nextRecordId('DEC', ['DEC-001', 'DEC-007', 'DEC-a1b2c3'])).toBe('DEC-008');
+    const st = new StorageManager(mkdtempSync(join(tmpdir(), 'runlog_mcp_')));
+    const tools = new RunlogMcpTools(st);
+    const a = tools.recordDecision({ title: 'a', context: 'c', choice: 'use postgres://u:supersecret99@h:5432/d' });
+    const b = tools.recordDecision({ title: 'b', context: 'c', choice: 'x' });
+    expect(a.id).not.toBe(b.id);
+    expect(a.choice).not.toContain('supersecret99');
+  });
+});
