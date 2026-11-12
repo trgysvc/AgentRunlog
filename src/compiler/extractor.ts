@@ -14,7 +14,7 @@ import { type StorageManager } from '../storage/index.js';
 import { countTokens } from 'gpt-tokenizer/encoding/cl100k_base';
 import { formatPushText } from '../storage/push-format.js';
 import { hasCompleteEvidence, isNonStructuralFailure } from './evidence.js';
-import { LLMCompilerClient, type LLMClientConfig } from './llm-client.js';
+import { heuristicExtract } from './heuristic.js';
 
 export interface ExtractedBundle {
   decisions: Decision[];
@@ -23,15 +23,13 @@ export interface ExtractedBundle {
   tasks: Task[];
 }
 
-export interface CompilerOptions extends LLMClientConfig {}
+export interface CompilerOptions {}
 
 export class TranscriptExtractor {
   private storage: StorageManager;
-  private llmClient: LLMCompilerClient;
 
   constructor(storage: StorageManager, options: CompilerOptions = {}) {
     this.storage = storage;
-    this.llmClient = new LLMCompilerClient(options);
   }
 
   /**
@@ -53,38 +51,7 @@ export class TranscriptExtractor {
   }
 
   /**
-   * Builds Karpathy LLM Wiki compiler prompt based on schema.md
-   */
-  public buildCompilerPrompt(events: RawSessionEvent[]): string {
-    const sessionId = events[0]?.sessionId ?? 'unknown';
-    const formattedEvents = events.map((e, idx) => {
-      return `Turn ${idx + 1} [${e.eventType} - ${e.timestamp}]:\n${JSON.stringify(e.payload, null, 2)}`;
-    }).join('\n\n');
-
-    return `You are the AgentRunlog Compiler Worker. Transform the raw coding-agent transcript (session "${sessionId}") into typed engineering memory records.
-
-CRITICAL RULES:
-1. STRICT EVIDENCE: every record must carry "evidence": {"turnIndex": <the Turn number it comes from>, "snippet": "<short quote>"}. Use only Turn numbers that appear below. Never invent turns.
-2. NO FALSE DEAD-ENDS (FR-05, FR-20): do NOT record transient network failures, rate limits, timeouts or syntax/typo mistakes as deadEnds. Only architectural or incompatibility failures qualify, and each MUST have "retryConditions".
-3. SUPERSEDES: if a decision replaces an earlier known decision, put that decision's id in "supersedes"; otherwise [].
-4. Do NOT put ids, sessionId, timestamps or hashes in records; the system assigns them.
-5. Record only what the transcript actually shows. Empty arrays are fine.
-
-OUTPUT: valid JSON only (no prose, no code fences), exactly this shape:
-{
-  "decisions": [{"title": str, "context": str, "choice": str, "consequences": str?, "decidedBy": "user"|"agent", "author": "user"|"agent"|"team", "affectsModules": [str], "supersedes": [str], "confidence": "high"|"medium"|"low", "evidence": {...}}],
-  "rcas": [{"title": str, "incident": str, "rootCause": str, "resolution": str, "preventativeActions": [str], "affectsFiles": [str], "confidence": "high"|"medium"|"low", "evidence": {...}}],
-  "deadEnds": [{"title": str, "rootCauseType": "architectural"|"limitation"|"incompatibility", "approach": str, "whyFailed": str, "retryConditions": str, "affectsModules": [str], "confidence": "high"|"medium"|"low", "evidence": {...}}],
-  "tasks": [{"title": str, "summary": str, "filesModified": [str], "status": "completed"|"in_progress"|"abandoned", "evidence": {...}}]
-}
-
-TRANSCRIPT TURNS:
-${formattedEvents}
-`;
-  }
-
-  /**
-   * Extracts typed records using the LLM client (or heuristic fallback) and compiles them.
+   * Extracts typed records from the captured work (deterministic, no model call) and compiles them.
    */
   public async extractAndCompile(sessionFilePath: string): Promise<ExtractedBundle> {
     const events = this.readSessionEvents(sessionFilePath);
@@ -92,8 +59,7 @@ ${formattedEvents}
       return { decisions: [], rcas: [], deadEnds: [], tasks: [] };
     }
 
-    const prompt = this.buildCompilerPrompt(events);
-    const bundle = await this.llmClient.extract(prompt, events);
+    const bundle = heuristicExtract(events);
     this.compileSession(sessionFilePath, bundle);
     return bundle;
   }

@@ -58,7 +58,7 @@ AgentRunlog acts as a non-intrusive context layer across the 4 major coding plat
 │  └── tasks/          (Work Log)       │                  ▲
 └───────────────────▲───────────────────┘                  │
                     │                             Asynchronous Compiler
-            Periodic Linter                      (LLM Extraction Worker)
+            Periodic Linter                      (Deterministic Compiler)
           (Staleness & Conflicts)
 ```
 
@@ -123,8 +123,8 @@ AgentRunlog makes an intentional architectural distinction between the **Working
 > **Why an Out-of-Band Compiler?**  
 > Forcing the working agent to simultaneously code and summarize hundreds of lines of chat history causes context bloat and mental fatigue (the primary pitfall observed in tools like Cline / Roo-Code). AgentRunlog offloads compilation to the background.
 >
-> **Zero External LLM Cost (Offline Heuristic Compiler):**  
-> All 4 supported coding platforms already run their own frontier LLMs. Requiring users to configure external cloud API keys (OpenAI, Anthropic) just for memory compilation creates unnecessary friction. Therefore, AgentRunlog ships with a **Zero-Cost Offline Heuristic Compiler**: even without external API keys or network access, running `runlog compile` uses deterministic pattern recognition to extract failing commands, tool crashes, and task summaries into typed engineering artifacts. External LLMs (OpenAI, Anthropic, Gemini, Ollama) can optionally be configured if desired.
+> **No model calls, ever:**  
+> All 4 supported coding platforms already run their own frontier LLMs, and AgentRunlog never talks to a model itself. Hooks capture what the user and the agent said and did (prompts, tool runs, errors, files); `runlog compile` extracts typed records from that work with deterministic pattern recognition, and the agent itself can record decisions through the MCP tools. No API keys, no network.
 
 ---
 
@@ -183,7 +183,7 @@ runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR
 - [x] **Native Plugin Bundles**: One-command Antigravity plugin installer (`runlog install-plugin`) and Claude Code plugin manifests.
 - [x] **Capture Adapters**: Hook adapters for Claude Code, Google Antigravity, Cursor (`.cursorrules` fallback), and Codex CLI.
 - [x] **Codebase Bootstrap Scanner**: Automatic project scan on `runlog init` / `runlog scan` for existing in-progress repos.
-- [x] **Compiler Worker & Linter**: Zero-cost offline heuristic & multi-LLM parser, `active_context.json` cache, `wiki/index.md` builder, `runlog lint`, and `runlog reindex`.
+- [x] **Compiler Worker & Linter**: Deterministic offline compiler, `active_context.json` cache, `wiki/index.md` builder, `runlog lint`, and `runlog reindex`.
 
 ---
 

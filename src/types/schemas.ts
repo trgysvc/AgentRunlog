@@ -164,12 +164,9 @@ export const RunlogConfigSchema = z.object({
     .default({ enabled: true, customPatterns: [] }),
   compiler: z
     .object({
-      provider: z.enum(['local', 'cloud']).default('local'),
-      model: z.string().default('fast-default'),
-      endpoint: z.string().optional(),
       uncompiledTurnsThreshold: z.number().default(25), // NFR-06 batching threshold
     })
-    .default({ provider: 'local', model: 'fast-default', uncompiledTurnsThreshold: 25 }),
+    .default({ uncompiledTurnsThreshold: 25 }),
 });
 export type RunlogConfig = z.infer<typeof RunlogConfigSchema>;
 

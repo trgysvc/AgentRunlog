@@ -148,14 +148,10 @@ describe('Compiler & Linter Engine', () => {
     expect(existsSync(moduleFile)).toBe(true);
   });
 
-  it('LLMCompilerClient strips markdown fences and provides heuristic fallback', async () => {
-    const { LLMCompilerClient } = await import('./llm-client.js');
-    const client = new LLMCompilerClient({ provider: 'heuristic' });
+  it('heuristic extractor turns a failing build into a task and an RCA', async () => {
+    const { heuristicExtract } = await import('./heuristic.js');
 
-    const parsed = client.parseJSONBundle('```json\n{"decisions": [], "rcas": [], "deadEnds": [], "tasks": []}\n```');
-    expect(parsed.decisions).toEqual([]);
-
-    const fallback = await client.extract('dummy', [
+    const fallback = heuristicExtract([
       {
         sessionId: 'sess_fallback',
         platform: 'claude_code',
@@ -178,10 +174,9 @@ describe('Compiler & Linter Engine', () => {
   });
 
   it('heuristic extractor automatically detects decisions and repeated-failure dead ends without user prompts', async () => {
-    const { LLMCompilerClient } = await import('./llm-client.js');
-    const client = new LLMCompilerClient({ provider: 'heuristic' });
+    const { heuristicExtract } = await import('./heuristic.js');
 
-    const bundle = await client.extract('dummy', [
+    const bundle = heuristicExtract([
       {
         sessionId: 'sess_auto',
         platform: 'antigravity',
@@ -426,7 +421,7 @@ describe('FR-05 / FR-06 / NFR-08 enforcement', () => {
     const { join } = await import('node:path');
     const { StorageManager } = await import('../storage/index.js');
     const { TranscriptExtractor } = await import('./extractor.js');
-    const { normalizeToolPayload } = await import('./llm-client.js');
+    const { normalizeToolPayload } = await import('./heuristic.js');
     const st = new StorageManager(mkdtempSync(join(tmpdir(), 'runlog_fr_')));
     const ex = new TranscriptExtractor(st);
     const ts = new Date().toISOString();
@@ -455,34 +450,6 @@ describe('FR-05 / FR-06 / NFR-08 enforcement', () => {
 });
 
 describe('R5/R11/R12: LLM bundle normalization, trusted import, scanner drafts', () => {
-  it('normalizeLlmBundle fills evidence from the real event and drafts invalid turns', async () => {
-    const { normalizeLlmBundle } = await import('./llm-client.js');
-    const { hasCompleteEvidence } = await import('./evidence.js');
-    const events: any[] = [
-      { sessionId: 's1', platform: 'claude_code', eventType: 'prompt_submit', timestamp: '2026-01-01T00:00:00Z', payload: { text: 'a' } },
-      { sessionId: 's1', platform: 'claude_code', eventType: 'agent_response', timestamp: '2026-01-01T00:00:01Z', payload: { text: 'b' } },
-    ];
-    const bundle = normalizeLlmBundle(
-      {
-        decisions: [
-          { id: 'DEC-001', title: 'Use X', context: 'c', choice: 'x', evidence: { turnIndex: 2 } },
-          { id: 'DEC-001', title: 'Use Y', context: 'c', choice: 'y', evidence: { turnIndex: 99 } },
-        ],
-        rcas: [],
-        deadEnds: [],
-        tasks: [],
-      } as any,
-      events
-    );
-    const [a, b] = bundle.decisions;
-    expect(a.id).not.toBe('DEC-001');
-    expect(a.id).not.toBe(b.id);
-    expect(hasCompleteEvidence(a.evidence)).toBe(true);
-    expect(a.evidence.sessionId).toBe('s1');
-    expect(a.evidence.timestamp).toBe('2026-01-01T00:00:01Z');
-    expect(hasCompleteEvidence(b.evidence)).toBe(false);
-  });
-
   it('trusted import writes events even under AGENTRUNLOG_INTERNAL', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'runlog_imp_'));
     const st = new StorageManager(dir);
