@@ -164,4 +164,38 @@ describe('Hook manifests use the nested matcher-group format', () => {
     expect(() => hm.claude.install(dir)).toThrow(/not valid JSON/);
     expect(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8')).toBe('{ not json');
   });
+
+  it('Antigravity hooks.json uses named group, flat/nested shapes, merges, and is idempotent', async () => {
+    const { mkdtempSync, readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { StorageManager } = await import('../storage/index.js');
+    const { HookManager } = await import('./index.js');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_ag_'));
+    mkdirSync(join(dir, '.agents'), { recursive: true });
+    const file = join(dir, '.agents', 'hooks.json');
+    writeFileSync(file, JSON.stringify({ mine: { Stop: [{ type: 'command', command: 'echo mine' }] } }));
+    const hm = new HookManager(new StorageManager(dir));
+    hm.antigravity.install(dir);
+    hm.antigravity.install(dir);
+    const cfg = JSON.parse(readFileSync(file, 'utf8'));
+    expect(cfg.mine.Stop[0].command).toBe('echo mine');
+    const g = cfg.agentrunlog;
+    expect(g.SessionStart).toHaveLength(1);
+    expect(g.SessionStart[0].type).toBe('command');
+    expect(g.SessionStart[0].command).toContain('hook antigravity session-start');
+    expect(g.PostToolUse[0].matcher).toBe('*');
+    expect(g.PostToolUse[0].hooks[0].command).toContain('post-tool-use');
+    expect(g.PreToolUse).toBeUndefined();
+    expect(g.Stop[0].hooks).toBeUndefined();
+  });
+
+  it('formatHookOutput speaks each platform dialect', async () => {
+    const { formatHookOutput } = await import('./light.js');
+    expect(formatHookOutput('claude', 'session-start', 'ctx')).toBe('ctx');
+    expect(JSON.parse(formatHookOutput('cursor', 'session-start', 'ctx')!)).toEqual({ additional_context: 'ctx' });
+    expect(JSON.parse(formatHookOutput('antigravity', 'session-start', 'ctx')!).injectSteps[0].systemMessage.systemMessage).toBe('ctx');
+    expect(JSON.parse(formatHookOutput('antigravity', 'stop', null)!).decision).toBe('allow');
+    expect(JSON.parse(formatHookOutput('antigravity', 'pre-invocation', null)!)).toEqual({ injectSteps: [] });
+  });
 });

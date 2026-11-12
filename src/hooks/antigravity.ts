@@ -1,7 +1,28 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand } from './manifest.js';
+import { defaultCliCommand, isAgentRunlogEntry, readJsonStrict, writeJsonAtomic } from './manifest.js';
+
+export const ANTIGRAVITY_GROUP = 'agentrunlog';
+
+/**
+ * Hook group for Antigravity's hooks.json. The file maps a hook NAME to its event config:
+ * SessionStart / PreInvocation / PostInvocation / Stop take a flat handler array, while
+ * PostToolUse takes `{matcher, hooks:[...]}` groups. PreToolUse is deliberately not registered:
+ * it must return a permission `decision`, and we never gate tools.
+ */
+export function antigravityHookGroup(cliBinPath: string): Record<string, unknown> {
+  const handler = (event: string) => ({ type: 'command', command: `${cliBinPath} hook antigravity ${event}`, timeout: 10 });
+  return {
+    [ANTIGRAVITY_GROUP]: {
+      enabled: true,
+      SessionStart: [handler('session-start')],
+      PreInvocation: [handler('pre-invocation')],
+      PostInvocation: [handler('post-invocation')],
+      PostToolUse: [{ matcher: '*', hooks: [handler('post-tool-use')] }],
+      Stop: [handler('stop')],
+    },
+  };
+}
 
 export class AntigravityHookAdapter {
   private storage: StorageManager;
@@ -10,59 +31,22 @@ export class AntigravityHookAdapter {
     this.storage = storage;
   }
 
-  /**
-   * Generates the Google Antigravity hooks.json manifest
-   */
   public generateHookManifest(cliBinPath: string = defaultCliCommand()): Record<string, unknown> {
-    return {
-      description: 'AgentRunlog typed engineering memory hook for Google Antigravity',
-      hooks: {
-        PreInvocation: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook antigravity pre-invocation`,
-          },
-        ],
-        PostInvocation: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook antigravity post-invocation`,
-          },
-        ],
-        PreToolUse: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook antigravity pre-tool-use`,
-          },
-        ],
-        PostToolUse: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook antigravity post-tool-use`,
-          },
-        ],
-        Stop: [
-          {
-            type: 'command',
-            command: `${cliBinPath} hook antigravity stop`,
-          },
-        ],
-      },
-    };
+    return antigravityHookGroup(cliBinPath);
   }
 
   /**
-   * Installs hooks.json into .agents/hooks.json in project root
+   * Installs into .agents/hooks.json (workspace scope), merging with the user's other hook groups.
    */
   public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
-    const agentsDir = join(projectRoot, '.agents');
-    if (!existsSync(agentsDir)) {
-      mkdirSync(agentsDir, { recursive: true });
-    }
-
-    const manifestPath = join(agentsDir, 'hooks.json');
-    const manifest = this.generateHookManifest(cliBinPath);
-    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    const manifestPath = join(projectRoot, '.agents', 'hooks.json');
+    const data = readJsonStrict(manifestPath);
+    // Drop our group, and the legacy {description, hooks:{...}} shape older versions wrote.
+    delete data[ANTIGRAVITY_GROUP];
+    if (data.hooks && isAgentRunlogEntry(data.hooks)) delete data.hooks;
+    if (typeof data.description === 'string' && data.description.includes('AgentRunlog')) delete data.description;
+    Object.assign(data, this.generateHookManifest(cliBinPath));
+    writeJsonAtomic(manifestPath, data);
     return manifestPath;
   }
 

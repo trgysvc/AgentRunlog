@@ -1,3 +1,4 @@
+import { antigravityHookGroup } from '../hooks/antigravity.js';
 import { nestedHookGroup, readJsonStrict } from '../hooks/manifest.js';
 import {
   existsSync,
@@ -142,15 +143,7 @@ export class UniversalPluginInstaller {
     writeFileSync(
       hooksPath,
       JSON.stringify(
-        {
-          description: 'AgentRunlog typed engineering memory hooks for Google Antigravity',
-          hooks: {
-            PreInvocation: [{ type: 'command', command: this.getHookCommand('antigravity', 'pre-invocation') }],
-            PostInvocation: [{ type: 'command', command: this.getHookCommand('antigravity', 'post-invocation') }],
-            PostToolUse: [{ type: 'command', command: this.getHookCommand('antigravity', 'post-tool-use') }],
-            Stop: [{ type: 'command', command: this.getHookCommand('antigravity', 'stop') }],
-          },
-        },
+        antigravityHookGroup(`"${this.nodeExec}" "${this.cliEntry}"`),
         null,
         2
       ),

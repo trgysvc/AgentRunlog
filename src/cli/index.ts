@@ -9,6 +9,7 @@ import { CodebaseScanner } from '../compiler/scanner.js';
 import { HistoryImporter } from '../compiler/history-importer.js';
 import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/auto-bootstrap.js';
 import { HookManager } from '../hooks/index.js';
+import { formatHookOutput } from '../hooks/light.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
 import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
@@ -146,10 +147,8 @@ Usage:
       cliPath: process.argv[1],
     });
 
-    if (pushText) {
-      const isCursor = (args[1] || '').toLowerCase().includes('cursor');
-      process.stdout.write((isCursor ? JSON.stringify({ additional_context: pushText }) : pushText) + '\n');
-    }
+    const out = formatHookOutput(args[1] || 'claude', args[2] || 'session-start', pushText);
+    if (out) process.stdout.write(out + '\n');
     process.exit(0);
   }
 

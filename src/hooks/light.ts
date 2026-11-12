@@ -60,9 +60,8 @@ export function mapEvent(event: string): MappedEvent | null {
   return null;
 }
 
-function isPushEvent(platform: NormalizedPlatform, event: string): boolean {
+function isPushEvent(event: string): boolean {
   const e = event.toLowerCase();
-  if (platform === 'antigravity') return e === 'pre-invocation';
   return e === 'session-start' || e === 'sessionstart';
 }
 
@@ -117,7 +116,7 @@ export function runLightHook(input: LightHookInput): string | null {
   const payload = input.payload;
 
   // 1. Capture the event. Without a session id we refuse to guess a "daily" session for junk input.
-  const idFromPayload = payload.conversation_id ?? payload.session_id ?? payload.sessionId;
+  const idFromPayload = payload.conversationId ?? payload.conversation_id ?? payload.session_id ?? payload.sessionId;
   let sessionId = input.sessionId || (idFromPayload ? String(idFromPayload) : '');
   if (!sessionId && input.payloadParsed) sessionId = `sess_${new Date().toISOString().slice(0, 10)}`;
 
@@ -142,7 +141,7 @@ export function runLightHook(input: LightHookInput): string | null {
 
   // 2. Push: static pre-compiled cache only (FR-19).
   let push: string | null = null;
-  if (isPushEvent(platform, event)) {
+  if (isPushEvent(event)) {
     const cache = readJson(join(cacheDir, 'active_context.json'));
     push = formatPushText(cache);
   }
@@ -169,6 +168,23 @@ export function runLightHook(input: LightHookInput): string | null {
 
   if (shouldCompile && !isLockFresh(join(cacheDir, 'compile.lock'))) {
     spawnWorker(input.cliPath, 'compile', env, projectDir);
+  }
+  return push;
+}
+
+/**
+ * Platform-specific stdout. Cursor injects via `additional_context`; Antigravity hooks must answer
+ * with JSON (context goes in `injectSteps`, Stop needs a `decision`); others take plain text.
+ */
+export function formatHookOutput(platform: string, event: string, push: string | null): string | null {
+  const p = platform.toLowerCase();
+  const e = event.toLowerCase();
+  if (p.includes('cursor')) return push ? JSON.stringify({ additional_context: push }) : null;
+  if (p.includes('antigravity')) {
+    if (e === 'stop') return JSON.stringify({ decision: 'allow' });
+    if (e === 'session-start' && push) return JSON.stringify({ injectSteps: [{ systemMessage: { systemMessage: push } }] });
+    if (e === 'pre-invocation' || e === 'post-invocation') return JSON.stringify({ injectSteps: [] });
+    return '{}';
   }
   return push;
 }

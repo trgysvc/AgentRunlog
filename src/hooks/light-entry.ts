@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isValidProjectDirectory } from '../compiler/project-dir.js';
-import { runLightHook } from './light.js';
+import { formatHookOutput, runLightHook } from './light.js';
 
 const STDIN_CAP_MS = 1000;
 const STDIN_MAX_BYTES = 8 * 1024 * 1024;
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const roots = payload.workspace_roots;
+  const roots = payload.workspace_roots ?? payload.workspacePaths;
   const projectRoot =
     (Array.isArray(roots) && typeof roots[0] === 'string' && roots[0]) ||
     (typeof payload.cwd === 'string' && payload.cwd) ||
@@ -75,11 +75,8 @@ async function main(): Promise<void> {
     storageRoot: join(projectRoot, '.agentrunlog'),
     cliPath,
   });
-  if (push) {
-    // Cursor's sessionStart hook injects context through a JSON field instead of plain stdout.
-    const isCursor = platform.toLowerCase().includes('cursor');
-    process.stdout.write((isCursor ? JSON.stringify({ additional_context: push }) : push) + '\n');
-  }
+  const out = formatHookOutput(platform, event, push);
+  if (out) process.stdout.write(out + '\n');
 }
 
 main()
