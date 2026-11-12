@@ -73,7 +73,7 @@ describe('Platform Hook Adapters (Claude Code, Antigravity, Cursor, Codex)', () 
     expect(subsequent).toBeNull();
   });
 
-  it('Cursor adapter generates hooks.json and .cursorrules fallback instructions (FR-14)', () => {
+  it('Cursor adapter generates hooks.json and cursor rules fallback instructions (FR-14)', () => {
     const installed = hooks.cursor.install(tempDir);
     expect(existsSync(installed.hooksPath)).toBe(true);
     expect(existsSync(installed.rulesPath)).toBe(true);

@@ -80,7 +80,7 @@ function spawnWorker(cliPath: string, subcommand: string, env: NodeJS.ProcessEnv
       detached: true,
       stdio: 'ignore',
       cwd,
-      env: { ...env, AGENTRUNLOG_INTERNAL: '1' }, // NFR-09 recursion shield
+      env: { ...env, AGENTRUNLOG_INTERNAL: '1', AGENTRUNLOG_CALLER: 'agentrunlog-compiler' }, // NFR-09 recursion shield
     });
     child.unref();
   } catch {
@@ -106,6 +106,8 @@ function bumpPending(cacheDir: string, by: number): number {
 export function runLightHook(input: LightHookInput): string | null {
   const env = input.env ?? process.env;
   if (env.AGENTRUNLOG_INTERNAL === '1' || env.AGENTRUNLOG_SKIP === '1') return null;
+  // NFR-09 second layer: transcript-level caller marker
+  if (env.AGENTRUNLOG_CALLER === 'agentrunlog-compiler' || input.payload.caller === 'agentrunlog-compiler') return null;
 
   const platform = normalizePlatform(input.platform);
   const event = input.event.toLowerCase();

@@ -147,7 +147,8 @@ Usage:
     });
 
     if (pushText) {
-      process.stdout.write(pushText + '\n');
+      const isCursor = (args[1] || '').toLowerCase().includes('cursor');
+      process.stdout.write((isCursor ? JSON.stringify({ additional_context: pushText }) : pushText) + '\n');
     }
     process.exit(0);
   }
@@ -169,7 +170,7 @@ Usage:
         hooks.installAll();
         console.log('✅ Installed hooks for Claude Code (.claude/settings.json)');
         console.log('✅ Installed hooks for Google Antigravity (.agents/hooks.json)');
-        console.log('✅ Installed hooks & rules for Cursor (.cursor/hooks.json & .cursorrules)');
+        console.log('✅ Installed hooks & rules for Cursor (.cursor/hooks.json & .cursor/rules/agentrunlog.mdc)');
         console.log('✅ Installed hooks for Codex CLI (.codex/hooks.json)');
       } else if (platformArg === 'claude') {
         hooks.claude.install();
@@ -179,7 +180,7 @@ Usage:
         console.log('✅ Installed Google Antigravity hook (.agents/hooks.json)');
       } else if (platformArg === 'cursor') {
         hooks.cursor.install();
-        console.log('✅ Installed Cursor hooks & rules (.cursor/hooks.json & .cursorrules)');
+        console.log('✅ Installed Cursor hooks & rules (.cursor/hooks.json & .cursor/rules/agentrunlog.mdc)');
       } else if (platformArg === 'codex') {
         hooks.codex.install();
         console.log('✅ Installed Codex CLI hook (.codex/hooks.json)');

@@ -1,6 +1,26 @@
 import { createHash } from 'node:crypto';
 import { type ExtractedBundle } from './extractor.js';
 import { type RawSessionEvent } from '../types/schemas.js';
+import { eventHash, isNonStructuralFailure } from './evidence.js';
+
+/**
+ * Flattens the real per-platform tool payloads (Claude: tool_name/tool_input/tool_response)
+ * into the simple shape the heuristic understands. Already-flat payloads pass through.
+ */
+export function normalizeToolPayload(p: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...p };
+  const input = p.tool_input && typeof p.tool_input === 'object' ? p.tool_input : {};
+  const resp = p.tool_response && typeof p.tool_response === 'object' ? p.tool_response : {};
+  if (out.command === undefined) out.command = input.command ?? input.file_path ?? undefined;
+  if (out.tool === undefined) out.tool = p.tool_name;
+  if (out.exitCode === undefined) out.exitCode = resp.exit_code ?? resp.exitCode ?? resp.returncode;
+  if (out.error === undefined) {
+    if (typeof resp.error === 'string' && resp.error) out.error = resp.error;
+    else if (resp.is_error === true || p.is_error === true) out.error = String(resp.stderr || resp.content || resp.stdout || 'Tool reported an error').slice(0, 500);
+    else if (typeof resp.stderr === 'string' && resp.stderr && out.exitCode !== undefined && out.exitCode !== 0) out.error = resp.stderr.slice(0, 500);
+  }
+  return out;
+}
 
 function deterministicShortId(seed: string): string {
   return createHash('sha256').update(seed).digest('hex').slice(0, 6).toUpperCase();
@@ -238,9 +258,17 @@ export class LLMCompilerClient {
     const decisionSignalRegex =
       /\b(let'?s use|decided to|we will use|switch to|migrate to|instead of|adopt|use .+ over|kullanalım|kullanacağız|karar|yerine|geçelim|tercih)\b/i;
 
+    const ev = (i: number, timestamp: string) => ({
+      sessionId,
+      turnIndex: i + 1,
+      line: i + 1,
+      hash: eventHash(events[i]),
+      timestamp,
+    });
+
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
-      const payload = e.payload || {};
+      const payload = normalizeToolPayload(e.payload || {});
       const promptText = String(payload.text || payload.prompt || payload.rawText || '');
 
       // 1. Detect natural-language engineering decisions automatically (cap 5 per session)
@@ -265,11 +293,7 @@ export class LLMCompilerClient {
           supersedes: [],
           supersededBy: null,
           affectsModules: [],
-          evidence: {
-            sessionId,
-            turnIndex: i + 1,
-            timestamp: e.timestamp,
-          },
+          evidence: ev(i, e.timestamp),
           confidence: isHistoricalImport ? 'low' : 'medium',
           createdAt: e.timestamp,
           updatedAt: e.timestamp,
@@ -280,15 +304,16 @@ export class LLMCompilerClient {
       if (e.eventType === 'post_tool_use' && (payload.error || (payload.exitCode !== undefined && payload.exitCode !== 0))) {
         const cmdKey = String(payload.command || payload.tool || 'Tool');
         const errMsg = String(payload.error || `Exit code ${payload.exitCode}`);
+        const structural = !isNonStructuralFailure(errMsg);
 
         const prev = failureCounts.get(cmdKey) || { count: 0, lastError: '', timestamp: e.timestamp, turnIndex: i + 1 };
         prev.count += 1;
         prev.lastError = errMsg;
         prev.timestamp = e.timestamp;
         prev.turnIndex = i + 1;
-        failureCounts.set(cmdKey, prev);
+        if (structural) failureCounts.set(cmdKey, prev);
 
-        if (prev.count === 1) {
+        if (prev.count === 1 && structural) {
           bundle.rcas.push({
             id: `RCA-${deterministicShortId(`${sessionId}:rca:${i}`)}`,
             title: `Command Failed: ${cmdKey}`,
@@ -297,11 +322,7 @@ export class LLMCompilerClient {
             resolution: 'Investigate error output and fix failing command arguments',
             preventativeActions: ['Check syntax and dependencies before execution'],
             affectsFiles: [],
-            evidence: {
-              sessionId,
-              turnIndex: i + 1,
-              timestamp: e.timestamp,
-            },
+            evidence: ev(i, e.timestamp),
             confidence: isHistoricalImport ? 'low' : 'medium',
             createdAt: e.timestamp,
           });
@@ -316,11 +337,7 @@ export class LLMCompilerClient {
           summary: promptText,
           filesModified: [],
           status: 'completed',
-          evidence: {
-            sessionId,
-            turnIndex: i + 1,
-            timestamp: e.timestamp,
-          },
+          evidence: ev(i, e.timestamp),
           createdAt: e.timestamp,
         });
       }
@@ -337,11 +354,7 @@ export class LLMCompilerClient {
           whyFailed: `Failed ${stats.count} times in session. Last error: ${stats.lastError}`,
           retryConditions: 'Verify environment configuration, dependencies, or alternative command flags before retrying.',
           affectsModules: [],
-          evidence: {
-            sessionId,
-            turnIndex: stats.turnIndex,
-            timestamp: stats.timestamp,
-          },
+          evidence: ev(stats.turnIndex - 1, stats.timestamp),
           confidence: isHistoricalImport ? 'low' : 'medium',
           createdAt: stats.timestamp,
         });

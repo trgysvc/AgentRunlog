@@ -43,7 +43,7 @@ describe('Compiler & Linter Engine', () => {
       supersedes: ['DEC-NONEXISTENT'],
       supersededBy: null,
       affectsModules: [],
-      evidence: { sessionId: 'sess_1', timestamp: new Date().toISOString() },
+      evidence: { sessionId: 'sess_1', turnIndex: 1, line: 1, hash: 'h1', timestamp: new Date().toISOString() },
       confidence: 'high',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -58,7 +58,7 @@ describe('Compiler & Linter Engine', () => {
       whyFailed: 'Crashed',
       retryConditions: '', // Empty!
       affectsModules: [],
-      evidence: { sessionId: 'sess_1', timestamp: new Date().toISOString() },
+      evidence: { sessionId: 'sess_1', turnIndex: 1, line: 1, hash: 'h1', timestamp: new Date().toISOString() },
       confidence: 'high',
       createdAt: new Date().toISOString(),
     });
@@ -82,7 +82,7 @@ describe('Compiler & Linter Engine', () => {
       supersedes: [],
       supersededBy: null,
       affectsModules: ['src/db/**'],
-      evidence: { sessionId: 'sess_1', timestamp: new Date().toISOString() },
+      evidence: { sessionId: 'sess_1', turnIndex: 1, line: 1, hash: 'h1', timestamp: new Date().toISOString() },
       confidence: 'high',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -102,7 +102,7 @@ describe('Compiler & Linter Engine', () => {
           supersedes: ['DEC-001'],
           supersededBy: null,
           affectsModules: ['src/storage/**'],
-          evidence: { sessionId: 'sess_2', timestamp: new Date().toISOString() },
+          evidence: { sessionId: 'sess_2', turnIndex: 1, line: 1, hash: 'h1', timestamp: new Date().toISOString() },
           confidence: 'high',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -118,7 +118,7 @@ describe('Compiler & Linter Engine', () => {
           whyFailed: 'Hook timeout > 500ms',
           retryConditions: 'Only if running in background worker',
           affectsModules: ['src/hooks/**'],
-          evidence: { sessionId: 'sess_2', timestamp: new Date().toISOString() },
+          evidence: { sessionId: 'sess_2', turnIndex: 1, line: 1, hash: 'h1', timestamp: new Date().toISOString() },
           confidence: 'high',
           createdAt: new Date().toISOString(),
         },
@@ -234,7 +234,7 @@ describe('Compiler & Linter Engine', () => {
       supersedes: [],
       supersededBy: null,
       affectsModules: [],
-      evidence: { sessionId: 'live_1', timestamp: ts },
+      evidence: { sessionId: 'live_1', turnIndex: 1, line: 1, hash: 'h1', timestamp: ts },
       confidence: 'high' as const,
       createdAt: ts,
       updatedAt: ts,
@@ -262,7 +262,7 @@ describe('Compiler & Linter Engine', () => {
       context: 'ctx',
       supersededBy: null,
       affectsModules: [],
-      evidence: { sessionId: 'sess_x', timestamp: ts },
+      evidence: { sessionId: 'sess_x', turnIndex: 1, line: 1, hash: 'h1', timestamp: ts },
       confidence: 'high' as const,
       createdAt: ts,
       updatedAt: ts,
@@ -414,5 +414,40 @@ describe('Compiler & Linter Engine', () => {
     expect(decisions.some((d) => d.status === 'draft' && d.confidence === 'low')).toBe(true);
     const cache = storage.cache.getActiveContext();
     expect(cache?.activeDecisions.length || 0).toBe(0); // Drafts must NOT leak into push cache!
+  });
+});
+
+describe('FR-05 / FR-06 / NFR-08 enforcement', () => {
+  it('drafts records without full evidence, drops transient dead ends, honours minPushConfidence', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { StorageManager } = await import('../storage/index.js');
+    const { TranscriptExtractor } = await import('./extractor.js');
+    const { normalizeToolPayload } = await import('./llm-client.js');
+    const st = new StorageManager(mkdtempSync(join(tmpdir(), 'runlog_fr_')));
+    const ex = new TranscriptExtractor(st);
+    const ts = new Date().toISOString();
+    const full = { sessionId: 's', turnIndex: 1, line: 1, hash: 'h', timestamp: ts };
+    const dec = (id: string, evidence: any, confidence: any = 'high') => ({
+      id, title: id, status: 'active' as const, decidedBy: 'u', author: 'user' as const, context: 'c', choice: 'ch',
+      supersedes: [], supersededBy: null, affectsModules: [], evidence, confidence, createdAt: ts, updatedAt: ts,
+    });
+    const de = (id: string, whyFailed: string) => ({
+      id, title: id, rootCauseType: 'architectural' as const, approach: 'a', whyFailed, retryConditions: 'r',
+      affectsModules: [], evidence: full, confidence: 'high' as const, createdAt: ts,
+    });
+    ex.compileSession('x', {
+      decisions: [dec('DEC-A', full), dec('DEC-B', { sessionId: 's', timestamp: ts }), dec('DEC-C', full, 'low')],
+      rcas: [], tasks: [],
+      deadEnds: [de('DEAD-OK', 'Engine binary exceeded size limit'), de('DEAD-503', 'Upstream returned 503 Service Unavailable'), de('DEAD-SYN', 'SyntaxError: Unexpected token')],
+    });
+    expect(st.wiki.listDecisions().find((d) => d.id === 'DEC-B')!.status).toBe('draft');
+    expect(st.cache.getActiveContext()!.activeDecisions.map((d) => d.id)).toEqual(['DEC-A']);
+    expect(st.wiki.listDeadEnds().map((d) => d.id)).toEqual(['DEAD-OK']);
+
+    const n = normalizeToolPayload({ tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stderr: 'boom', exit_code: 1 } });
+    expect(n.command).toBe('npm test');
+    expect(n.error).toBe('boom');
   });
 });

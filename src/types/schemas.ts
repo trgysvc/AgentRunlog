@@ -40,6 +40,7 @@ export type Decision = z.infer<typeof DecisionSchema>;
 // RCA Record (FR-04, FR-05)
 export const RCASchema = z.object({
   id: z.string(), // e.g. RCA-001
+  status: z.enum(['active', 'draft']).optional(), // (absent = active) draft = evidence incomplete (FR-06)
   title: z.string(),
   incident: z.string(), // symptom, error trace
   rootCause: z.string(), // why it happened
@@ -55,6 +56,7 @@ export type RCA = z.infer<typeof RCASchema>;
 // Dead End Record (FR-05, FR-18, FR-20 - Soft Guardrail, Structural Only)
 export const DeadEndSchema = z.object({
   id: z.string(), // e.g. DEAD-001
+  status: z.enum(['active', 'draft']).optional(), // (absent = active) draft = evidence incomplete (FR-06)
   title: z.string(),
   rootCauseType: z.enum(['architectural', 'limitation', 'incompatibility']).default('architectural'),
   approach: z.string(), // what was attempted

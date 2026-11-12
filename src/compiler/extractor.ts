@@ -11,6 +11,9 @@ import {
   type RawSessionEvent,
 } from '../types/schemas.js';
 import { type StorageManager } from '../storage/index.js';
+import { countTokens } from 'gpt-tokenizer/encoding/cl100k_base';
+import { formatPushText } from '../storage/push-format.js';
+import { hasCompleteEvidence, isNonStructuralFailure } from './evidence.js';
 import { LLMCompilerClient, type LLMClientConfig } from './llm-client.js';
 
 export interface ExtractedBundle {
@@ -102,6 +105,8 @@ ${formattedEvents}
     for (const dec of bundle.decisions) {
       const parsed = DecisionSchema.safeParse(dec);
       if (!parsed.success) continue;
+      // FR-06: no complete transcript evidence -> draft, excluded from push (never silently dropped)
+      if (!hasCompleteEvidence(parsed.data.evidence) && parsed.data.status === 'active') parsed.data.status = 'draft';
       const prior = existingById.get(parsed.data.id);
       const record = prior
         ? {
@@ -121,6 +126,7 @@ ${formattedEvents}
     for (const rca of bundle.rcas) {
       const parsed = RCASchema.safeParse(rca);
       if (parsed.success) {
+        if (!hasCompleteEvidence(parsed.data.evidence)) parsed.data.status = 'draft';
         this.storage.wiki.saveRCA(parsed.data);
       }
     }
@@ -129,6 +135,9 @@ ${formattedEvents}
     for (const de of bundle.deadEnds) {
       const parsed = DeadEndSchema.safeParse(de);
       if (parsed.success) {
+        // FR-05: transient (503/timeout) or plain syntax failures are not dead ends
+        if (isNonStructuralFailure(parsed.data.whyFailed)) continue;
+        if (!hasCompleteEvidence(parsed.data.evidence)) parsed.data.status = 'draft';
         this.storage.wiki.saveDeadEnd(parsed.data);
       }
     }
@@ -168,84 +177,66 @@ ${formattedEvents}
   }
 
   /**
-   * Refreshes active context cache with strict token budget (NFR-07: <= 800 tokens)
+   * Refreshes the active context cache under the NFR-07 ceiling, measured with a real tokenizer
+   * on the exact text the hooks will inject. Honors NFR-08 (minPushConfidence) and FR-06/FR-07
+   * (no drafts, no superseded decisions).
    */
   public refreshActiveContextCache(): void {
-    const allDecisions = this.storage.wiki.listDecisions();
-    const allDeadEnds = this.storage.wiki.listDeadEnds();
-    const allRCAs = this.storage.wiki.listRCAs();
+    const rank: Record<string, number> = { low: 0, medium: 1, high: 2 };
+    const minRank = rank[this.storage.config.minPushConfidence ?? 'medium'] ?? 1;
+    const ok = (c: string) => (rank[c] ?? 0) >= minRank;
+    const maxTokens = this.storage.config.maxPushTokens || 800;
 
-    const maxChars = (this.storage.config.maxPushTokens || 800) * 4;
-    let currentChars = 0;
-
-    // Prioritize high-signal records within strict NFR-07 token budget
-    const activeDecisions: Array<{ id: string; title: string; choice: string; affectsModules: string[] }> = [];
-    const recentDeadEnds: Array<{
-      id: string;
-      title: string;
-      approach: string;
-      whyFailed: string;
-      retryConditions: string;
-      affectsModules: string[];
-    }> = [];
-    const recentRCAs: Array<{ id: string; title: string; incident: string; resolution: string }> = [];
-
-    // 1. Add known dead ends first (prevent repeated failures)
-    for (const de of allDeadEnds.filter((d) => d.confidence !== 'low').slice(0, 5)) {
-      const item = {
+    const recentDeadEnds = this.storage.wiki
+      .listDeadEnds()
+      .filter((d) => ok(d.confidence) && d.status !== 'draft')
+      .slice(0, 5)
+      .map((de) => ({
         id: de.id,
         title: de.title.slice(0, 80),
         approach: de.approach.slice(0, 120),
         whyFailed: de.whyFailed.slice(0, 140),
         retryConditions: de.retryConditions.slice(0, 140),
         affectsModules: de.affectsModules,
-      };
-      const cost = JSON.stringify(item).length;
-      if (currentChars + cost <= maxChars) {
-        recentDeadEnds.push(item);
-        currentChars += cost;
-      }
-    }
+      }));
 
-    // 2. Add active non-superseded decisions
-    for (const d of allDecisions.filter((x) => x.status === 'active' && x.confidence !== 'low' && !x.supersededBy)) {
-      const item = {
+    const activeDecisions = this.storage.wiki
+      .listDecisions()
+      .filter((x) => x.status === 'active' && ok(x.confidence) && !x.supersededBy)
+      .map((d) => ({
         id: d.id,
         title: d.title.slice(0, 80),
         choice: d.choice.slice(0, 180),
         affectsModules: d.affectsModules,
-      };
-      const cost = JSON.stringify(item).length;
-      if (currentChars + cost <= maxChars) {
-        activeDecisions.push(item);
-        currentChars += cost;
-      }
-    }
+      }));
 
-    // 3. Add recent RCAs if budget remains
-    for (const r of allRCAs.filter((x) => x.confidence !== 'low').slice(-3).reverse()) {
-      const item = {
+    const recentRCAs = this.storage.wiki
+      .listRCAs()
+      .filter((x) => ok(x.confidence) && x.status !== 'draft')
+      .slice(-3)
+      .reverse()
+      .map((r) => ({
         id: r.id,
         title: r.title.slice(0, 80),
         incident: r.incident.slice(0, 120),
         resolution: r.resolution.slice(0, 120),
-      };
-      const cost = JSON.stringify(item).length;
-      if (currentChars + cost <= maxChars) {
-        recentRCAs.push(item);
-        currentChars += cost;
-      }
+      }));
+
+    const build = () => ({ version: 1, lastUpdated: new Date().toISOString(), activeDecisions, recentDeadEnds, recentRCAs, estimatedTokens: 0 });
+    const measure = () => {
+      const text = formatPushText(build(), Number.MAX_SAFE_INTEGER);
+      return text ? countTokens(text) : 0;
+    };
+
+    // Drop the least valuable item until the injected text fits: RCAs, then decisions, then dead ends.
+    let tokens = measure();
+    while (tokens > maxTokens && (recentRCAs.length || activeDecisions.length || recentDeadEnds.length)) {
+      if (recentRCAs.length) recentRCAs.pop();
+      else if (activeDecisions.length) activeDecisions.pop();
+      else recentDeadEnds.pop();
+      tokens = measure();
     }
 
-    const estimatedTokens = Math.ceil(currentChars / 4);
-
-    this.storage.cache.setActiveContext({
-      version: 1,
-      lastUpdated: new Date().toISOString(),
-      activeDecisions,
-      recentDeadEnds,
-      recentRCAs,
-      estimatedTokens,
-    });
+    this.storage.cache.setActiveContext({ ...build(), estimatedTokens: tokens });
   }
 }

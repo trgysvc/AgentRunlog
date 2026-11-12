@@ -96,6 +96,33 @@ export const DEFAULT_RULES: SanitizerRule[] = [
       );
     },
   },
+  // 11. Opaque Bearer tokens (non-JWT)
+  {
+    name: 'BEARER_OPAQUE',
+    pattern: /\bBearer\s+(?!\[REDACTED:)[A-Za-z0-9._~+\/-]{20,}=*/g,
+    maskGenerator: (m) => `Bearer ${createSecretMask('BEARER', m.replace(/^Bearer\s+/, ''))}`,
+  },
+  // 12. npm tokens
+  {
+    name: 'NPM_TOKEN',
+    pattern: /\bnpm_[A-Za-z0-9]{36}\b/g,
+    maskGenerator: (m) => createSecretMask('NPM_TOKEN', m),
+  },
+  // 13. Stripe keys
+  {
+    name: 'STRIPE_KEY',
+    pattern: /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b/g,
+    maskGenerator: (m) => createSecretMask('STRIPE_KEY', m),
+  },
+  // 14. Shell/.env style assignments: DATABASE_PASSWORD=..., AWS_SECRET_ACCESS_KEY=..., export FOO_TOKEN=...
+  {
+    name: 'ENV_SECRET',
+    pattern: /\b([A-Za-z][A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIALS?)[A-Za-z0-9_]*)=(?!\[REDACTED:)(?!["'])([^\s]{6,})/gi,
+    maskGenerator: (m) => {
+      const eq = m.indexOf('=');
+      return `${m.slice(0, eq + 1)}${createSecretMask('SECRET', m.slice(eq + 1))}`;
+    },
+  },
 ];
 
 export class Sanitizer {

@@ -56,3 +56,17 @@ describe('Sanitizer', () => {
     expect(redacted.env.SECRET_TOKEN).toContain('Bearer [REDACTED:JWT_TOKEN:');
   });
 });
+
+describe('Sanitizer extra secret shapes', () => {
+  it('redacts env-style assignments, opaque bearer, npm and stripe tokens', async () => {
+    const { Sanitizer } = await import('./index.js');
+    const s = new Sanitizer();
+    const out = s.redactText(
+      'DATABASE_PASSWORD=hunter2hunter2 AWS_SECRET_ACCESS_KEY=abcd1234efgh5678 Authorization: Bearer abcdefghijklmnopqrstuvwx1234 npm_abcdefghijklmnopqrstuvwxyz0123456789 sk_live_abcdefghijklmnopqrstu'
+    );
+    for (const leaked of ['hunter2hunter2', 'abcd1234efgh5678', 'abcdefghijklmnopqrstuvwx1234', 'npm_abcdefghijklmnopqrstuvwxyz0123456789', 'sk_live_abcdefghijklmnopqrstu']) {
+      expect(out).not.toContain(leaked);
+    }
+    expect(out).toContain('DATABASE_PASSWORD=[REDACTED');
+  });
+});

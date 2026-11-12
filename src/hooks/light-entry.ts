@@ -75,7 +75,11 @@ async function main(): Promise<void> {
     storageRoot: join(projectRoot, '.agentrunlog'),
     cliPath,
   });
-  if (push) process.stdout.write(push + '\n');
+  if (push) {
+    // Cursor's sessionStart hook injects context through a JSON field instead of plain stdout.
+    const isCursor = platform.toLowerCase().includes('cursor');
+    process.stdout.write((isCursor ? JSON.stringify({ additional_context: push }) : push) + '\n');
+  }
 }
 
 main()

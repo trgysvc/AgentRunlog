@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand } from './manifest.js';
+import { defaultCliCommand, isAgentRunlogEntry, readJsonStrict, writeJsonAtomic } from './manifest.js';
 
 export class CursorHookAdapter {
   private storage: StorageManager;
@@ -17,6 +17,11 @@ export class CursorHookAdapter {
     return {
       version: 1,
       hooks: {
+        sessionStart: [
+          {
+            command: `${cliBinPath} hook cursor session-start`,
+          },
+        ],
         beforeSubmitPrompt: [
           {
             command: `${cliBinPath} hook cursor before-submit-prompt`,
@@ -90,10 +95,23 @@ To prevent repeating past mistakes and to preserve architectural decisions:
       mkdirSync(cursorDir, { recursive: true });
     }
 
+    // Merge into an existing hooks.json: keep the user's own hooks, replace only ours.
     const hooksPath = join(cursorDir, 'hooks.json');
-    writeFileSync(hooksPath, JSON.stringify(this.generateHookManifest(cliBinPath), null, 2), 'utf8');
+    const ours = this.generateHookManifest(cliBinPath) as { version: number; hooks: Record<string, Array<{ command: string }>> };
+    const existing = readJsonStrict(hooksPath) as { version?: number; hooks?: Record<string, Array<{ command?: string }>> };
+    const merged: Record<string, unknown[]> = {};
+    for (const [event, entries] of Object.entries(existing.hooks ?? {})) {
+      merged[event] = (Array.isArray(entries) ? entries : []).filter((e) => !isAgentRunlogEntry(e));
+    }
+    for (const [event, entries] of Object.entries(ours.hooks)) {
+      merged[event] = [...(merged[event] ?? []), ...entries];
+    }
+    writeJsonAtomic(hooksPath, { ...existing, version: existing.version ?? ours.version, hooks: merged });
 
-    const rulesPath = join(projectRoot, '.cursorrules');
+    // Own rules file: never clobber the user's .cursorrules.
+    const rulesDir = join(cursorDir, 'rules');
+    mkdirSync(rulesDir, { recursive: true });
+    const rulesPath = join(rulesDir, 'agentrunlog.mdc');
     writeFileSync(rulesPath, this.generateCursorRules(), 'utf8');
 
     return { hooksPath, rulesPath };

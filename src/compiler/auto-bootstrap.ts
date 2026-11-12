@@ -22,19 +22,19 @@ export async function ensureProjectBootstrapped(projectRoot: string): Promise<{
     return { bootstrappedNow: false, storage };
   }
 
-  // 1. Protect raw transcripts in .gitignore automatically
+
   const gitignorePath = join(projectRoot, '.gitignore');
-  if (existsSync(gitignorePath)) {
-    try {
+  const ignoreBlock = '# AgentRunlog Raw Transcripts (Privacy Protected)\n.agentrunlog/raw/\n.agentrunlog/cache/\n.agentrunlog/backup/\n';
+  try {
+    if (existsSync(gitignorePath)) {
       const content = readFileSync(gitignorePath, 'utf8');
       if (!content.includes('.agentrunlog/raw/')) {
-        appendFileSync(
-          gitignorePath,
-          '\n# AgentRunlog Raw Transcripts (Privacy Protected)\n.agentrunlog/raw/\n'
-        );
+        appendFileSync(gitignorePath, (content.endsWith('\n') ? '' : '\n') + '\n' + ignoreBlock);
       }
-    } catch {}
-  }
+    } else {
+      writeFileSync(gitignorePath, ignoreBlock, 'utf8'); // NFR-04: never leave raw transcripts committable
+    }
+  } catch {}
 
   // 2. Scan existing codebase (manifests, git history, modules, docs)
   const scanner = new CodebaseScanner(storage, projectRoot);
