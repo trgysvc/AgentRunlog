@@ -411,6 +411,8 @@ Usage:
       console.log(`  Context injections:  ${r.injections}`);
       console.log(`  Decisions:           ${r.activeDecisions} active / ${r.draftDecisions} draft / ${r.supersededDecisions} superseded`);
       console.log(`  RCAs / Dead ends / Runs: ${r.rcas} / ${r.deadEnds} / ${r.runs}`);
+      console.log(`  Unverified claims:   ${r.unverifiedClaims} session(s) said tests/build passed without a passing run`);
+      console.log(`  Stale records:       ${r.staleRecords} (cited files gone; not pushed)`);
       console.log(`  Lint:                ${r.lintErrors} errors, ${r.lintWarnings} warnings`);
       if (r.repeatedFailures.length) {
         console.log('  Repeated failures (same command failed in several sessions):');

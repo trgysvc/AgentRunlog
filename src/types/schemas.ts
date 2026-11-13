@@ -76,6 +76,7 @@ export const TaskSchema = z.object({
   summary: z.string(),
   filesModified: z.array(z.string()).default([]),
   status: z.enum(['completed', 'in_progress', 'abandoned']).default('completed'),
+  commits: z.array(z.string()).optional(), // git commits made during the session (compile-time link)
   evidence: EvidenceSchema,
   createdAt: z.string(),
 });
@@ -147,6 +148,8 @@ export const ActiveContextCacheSchema = z.object({
     )
     .default([]),
   estimatedTokens: z.number().default(0),
+  lastSession: z.object({ sessionId: z.string(), at: z.string(), text: z.string() }).optional(),
+  verified: z.array(z.string()).optional(),
 });
 export type ActiveContextCache = z.infer<typeof ActiveContextCacheSchema>;
 

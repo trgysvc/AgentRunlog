@@ -367,3 +367,16 @@
 - `runlog report`: etki raporu (oturum, enjeksiyon, kayıt sayıları, tekrarlayan hatalar, lint).
 - Gecikme: `--no-experimental-fetch` denendi ama Node 24'te bayrak kaldırılmış (hata verip hemen çıkıyordu, sahte 13ms ölçümü); geri alındı. Boş Node dosyası bile ~20ms; CJS paketi yalnızca ~4ms kazandırıyor. p95 hedefi Node ile ulaşılamaz.
 - Gerçek Claude: 27 turluk --resume oturumu, hiçbir olay kaybolmadı (27 prompt/27 yanıt/27 session_start). Not: `-p` her çağrıda SessionEnd tetiklediğinden 25-tur eşiği gerçek oturumda ayrıca izole edilemedi; eşik simüle hook testleriyle doğrulı.
+
+## Faz 14 — Opus'un seçtiği 6 aday özellik (SessionEnd'den bağımsız)
+
+Karar: derleme tetikleyicileri SessionEnd'e bağlı değil. Gerçek Claude'da SessionEnd/PreCompact hook'suz 28 turluk oturum, 25 tur eşiğiyle derlendi (journey sayfası + taslak karar üretildi). Aşağıdakilerin hepsi herhangi bir derlemede (25 tur, PreCompact, çökme kurtarma, SessionEnd) üretilir.
+
+1. **Devir özeti (handoff)**: `cache/last_session.json` → push'ta "Last session" bloğu (≤400 karakter: son istek, dokunulan dosyalar, açık iş). Açık hata/başarısız son Run varsa Task `in_progress`.
+2. **Tekrar eden hata koruması**: derleme `cache/guard_index.json` yazar; hook aynı komutun 2. hatasında (oturum başına sayaç, `cache/failcount.json`) RCA/dead-end'i Claude `additionalContext` olarak enjekte eder. Engellemez. Gerçek Claude ile doğrulandı.
+3. **Doğrulanmış komutlar**: her tür (test/build/lint/typecheck) için son geçen Run, push'ta 2–4 satır.
+4. **Kod senkronu**: tüm kayıt tiplerinde atıf yapılan dosyaların hepsi silinmişse (üst klasör var, dosya yok) kayıt push'tan çıkar, lint `STALE_CODE_REF` verir, rapor sayar.
+5. **İddia doğrulama**: son yanıt "testler geçti/build geçti" derken son düzenlemeden sonra geçen koşu yoksa journey sayfasında ve `report`'ta işaretlenir (yalnızca bayrak).
+6. **Git bağı**: derleme `git log --since/--until` ile oturum commit'lerini Task.commits ve journey sayfasına yazar; repo yoksa sessizce atlanır.
+
+Testler: `src/features.test.ts` (6 yeni), toplam 71/71, tsc temiz.

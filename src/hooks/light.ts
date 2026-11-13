@@ -125,6 +125,43 @@ function matchesExclusion(payload: Record<string, unknown>, patterns: string[]):
   return strings.some((str) => res.some((r) => r.test(str)));
 }
 
+function failureKey(payload: Record<string, any>): string | null {
+  const ti = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  const failed =
+    payload.hook_event_name === 'PostToolUseFailure' ||
+    (typeof payload.error === 'string' && payload.error.length > 0) ||
+    (typeof payload.exitCode === 'number' && payload.exitCode !== 0);
+  if (!failed) return null;
+  const cmd = String(ti.command ?? payload.command ?? payload.tool_name ?? payload.tool ?? '').replace(/\s+/g, ' ').trim();
+  return cmd ? cmd.slice(0, 160) : null;
+}
+
+/** Returns an advisory text on the 2nd failure of the same command in this session (never blocks). */
+function repeatedFailureGuard(cacheDir: string, sessionId: string, payload: Record<string, any>): string | null {
+  try {
+    const key = failureKey(payload);
+    if (!key) return null;
+    const file = join(cacheDir, 'failcount.json');
+    let st = readJson(file);
+    if (!st || st.sessionId !== sessionId) st = { sessionId, counts: {} };
+    const n = (st.counts[key] = (Number(st.counts[key]) || 0) + 1);
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(file, JSON.stringify(st), 'utf8');
+    if (n !== 2) return null;
+    const index = readJson(join(cacheDir, 'guard_index.json'));
+    if (!Array.isArray(index)) return null;
+    const lk = key.toLowerCase();
+    const hits = index.filter((g: any) => {
+      const gk = String(g.key || '').toLowerCase();
+      return gk.length >= 4 && (lk.includes(gk) || gk.includes(lk));
+    });
+    if (!hits.length) return null;
+    return ['<!-- AGENTRUNLOG_GUARD -->', '⚠️ Same command failed twice. AgentRunlog has prior knowledge (advisory, not blocking):', ...hits.slice(0, 2).map((h: any) => `- ${h.text}`)].join('\n');
+  } catch {
+    return null;
+  }
+}
+
 export function runLightHook(input: LightHookInput): string | null {
   const env = input.env ?? process.env;
   if (env.AGENTRUNLOG_INTERNAL === '1' || env.AGENTRUNLOG_SKIP === '1') return null;
@@ -167,12 +204,17 @@ export function runLightHook(input: LightHookInput): string | null {
     }
   }
 
+  // 1b. Repeated-failure guardrail: on the 2nd failure of the same command in a session, surface the known fix / dead end.
+  let guard: string | null = null;
+  if (mapped === 'post_tool_use' && sessionId && !optedOut && !excluded) guard = repeatedFailureGuard(cacheDir, sessionId, payload);
+
   // 2. Push: static pre-compiled cache only (FR-19).
   let push: string | null = null;
   if (isPushEvent(event)) {
     const cache = readJson(join(cacheDir, 'active_context.json'));
     push = formatPushText(cache);
   }
+  if (guard) push = guard;
 
   if (!input.cliPath) return push;
   const projectDir = dirname(input.storageRoot);
@@ -215,6 +257,14 @@ export function runLightHook(input: LightHookInput): string | null {
 export function formatHookOutput(platform: string, event: string, push: string | null): string | null {
   const p = platform.toLowerCase();
   const e = event.toLowerCase();
+  if (push && push.startsWith('<!-- AGENTRUNLOG_GUARD -->')) {
+    // Tool-time advisory: only Claude Code documents additionalContext for post-tool hooks.
+    if (p.includes('claude') && (e === 'post-tool-use' || e === 'posttooluse' || e === 'post-tool-use-failure' || e === 'posttoolusefailure')) {
+      const name = e.includes('failure') ? 'PostToolUseFailure' : 'PostToolUse';
+      return JSON.stringify({ hookSpecificOutput: { hookEventName: name, additionalContext: push } });
+    }
+    return null;
+  }
   if (p.includes('cursor')) return push ? JSON.stringify({ additional_context: push }) : null;
   if (p.includes('antigravity')) {
     if (e === 'stop') return JSON.stringify({ decision: 'allow' });

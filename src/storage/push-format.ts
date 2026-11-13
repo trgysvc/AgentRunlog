@@ -7,6 +7,8 @@ export interface PushCacheShape {
   activeDecisions?: Array<{ id: string; title: string; choice: string }>;
   recentDeadEnds?: Array<{ id: string; title: string; whyFailed: string; retryConditions: string }>;
   recentRCAs?: Array<{ id: string; title: string; incident: string; resolution: string }>;
+  lastSession?: { sessionId: string; at: string; text: string };
+  verified?: string[];
 }
 
 /** NFR-07: 800 tokens ~= 3,200 characters. */
@@ -19,7 +21,8 @@ export function formatPushText(cache: PushCacheShape | null, charBudget: number 
   const decisions = cache.activeDecisions ?? [];
   const deadEnds = cache.recentDeadEnds ?? [];
   const rcas = cache.recentRCAs ?? [];
-  if (decisions.length === 0 && deadEnds.length === 0 && rcas.length === 0) return null;
+  const verified = cache.verified ?? [];
+  if (decisions.length === 0 && deadEnds.length === 0 && rcas.length === 0 && !cache.lastSession && verified.length === 0) return null;
 
   const START = '<!-- AGENTRUNLOG_CONTEXT_START -->';
   const END = '<!-- AGENTRUNLOG_CONTEXT_END -->';
@@ -44,6 +47,17 @@ export function formatPushText(cache: PushCacheShape | null, charBudget: number 
       header: '### 🔍 Recent Root Cause Analyses (Known Fixes):',
       lines: rcas.map((r) => `- **[${r.id}] ${r.title}**: ${r.incident} → Fix: ${r.resolution}`),
     });
+  }
+
+  if (cache.lastSession) {
+    const ls = cache.lastSession;
+    blocks.push({
+      header: '### ⏭ Last session (handoff):',
+      lines: [`- (${ls.sessionId.slice(0, 8)}, ${ls.at.slice(0, 16).replace('T', ' ')}) ${ls.text}`],
+    });
+  }
+  if (verified.length > 0) {
+    blocks.push({ header: '### ✅ Verified commands:', lines: verified.map((v) => `- ${v}`) });
   }
 
   const out: string[] = [START];

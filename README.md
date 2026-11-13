@@ -200,3 +200,12 @@ runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR
 ## 📄 License
 
 MIT © [Turgay Savacı](https://github.com/trgysvc)
+
+
+## Handoff, guardrail and verification (no model, no SessionEnd dependency)
+
+- **Last session handoff** and **verified commands** are pushed at session start (within the 800-token ceiling).
+- **Repeated-failure guard**: the 2nd failure of the same command in a session injects the known RCA / dead end (Claude Code, advisory only).
+- **Code sync**: records whose cited files were all deleted are not pushed and are flagged by `lint` / `report`.
+- **Claim check**: "tests pass" claims without a passing run are flagged in the session journey and `report`.
+- **Git link**: commits made during a session are attached to its task and journey page.

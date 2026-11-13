@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
 import { WikiLinter } from './linter.js';
+import { analyzeSession } from './journey.js';
 
 export interface ImpactReport {
   sessions: number;
@@ -14,6 +15,8 @@ export interface ImpactReport {
   deadEnds: number;
   runs: number;
   repeatedFailures: { command: string; sessions: number }[];
+  unverifiedClaims: number;
+  staleRecords: number;
   lintErrors: number;
   lintWarnings: number;
 }
@@ -25,14 +28,17 @@ export function buildImpactReport(storage: StorageManager): ImpactReport {
   const failSessions = new Map<string, Set<string>>();
   let sessions = 0;
   let injections = 0;
+  let unverifiedClaims = 0;
   const files = existsSync(paths.raw) ? readdirSync(paths.raw).filter((f) => f.startsWith('session-') && f.endsWith('.jsonl')) : [];
   for (const f of files) {
     sessions++;
     const seen = new Set<string>();
+    const evs: any[] = [];
     for (const line of readFileSync(join(paths.raw, f), 'utf8').split('\n')) {
       if (!line.trim()) continue;
       try {
         const e = JSON.parse(line);
+        evs.push(e);
         if (!seen.has(e.platform)) {
           seen.add(e.platform);
           platforms[e.platform] = (platforms[e.platform] || 0) + 1;
@@ -48,6 +54,9 @@ export function buildImpactReport(storage: StorageManager): ImpactReport {
         }
       } catch {}
     }
+    try {
+      if ((analyzeSession(evs)?.unverifiedClaims.length ?? 0) > 0) unverifiedClaims++;
+    } catch {}
   }
   const decisions = wiki.listDecisions();
   const lint = new WikiLinter(storage).lint();
@@ -66,6 +75,8 @@ export function buildImpactReport(storage: StorageManager): ImpactReport {
       .map(([command, s]) => ({ command, sessions: s.size }))
       .sort((a, b) => b.sessions - a.sessions)
       .slice(0, 5),
+    unverifiedClaims,
+    staleRecords: lint.issues.filter((i) => i.code === 'STALE_CODE_REF').length,
     lintErrors: lint.issueCount.errors,
     lintWarnings: lint.issueCount.warnings,
   };

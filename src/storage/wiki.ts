@@ -100,6 +100,19 @@ export class WikiManager {
     }
   }
 
+  public listRuns(): Run[] {
+    try {
+      const out: Run[] = [];
+      for (const file of readdirSync(this.paths.runs).filter((f) => f.startsWith('RUN-') && f.endsWith('.md'))) {
+        const res = RunSchema.safeParse(matter(readFileSync(join(this.paths.runs, file), 'utf8')).data);
+        if (res.success) out.push(res.data);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
   public listTasks(): Task[] {
     try {
       const files = readdirSync(this.paths.tasks).filter((f) => f.endsWith('.md'));

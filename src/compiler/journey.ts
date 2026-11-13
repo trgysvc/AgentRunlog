@@ -23,7 +23,41 @@ function filesOf(p: Record<string, any>): string[] {
  * were touched, which commands ran, and which failures were later resolved. Full text always stays
  * in raw/; this is a navigable summary that points back to it by turn number.
  */
-export function buildSessionJourney(events: RawSessionEvent[]): string | null {
+export type RunKind = 'test' | 'build' | 'lint' | 'typecheck';
+
+/** Classifies a command as a verification run (test/build/lint/typecheck), or null. */
+export function runKind(cmd: string): RunKind | null {
+  if (/\b(tsc\b|cargo check|mypy|pyright)/i.test(cmd) && !/\bbuild\b/i.test(cmd)) return 'typecheck';
+  if (/\b(lint|eslint|ruff|clippy|go vet)\b/i.test(cmd)) return 'lint';
+  if (/\b(test|vitest|jest|pytest)\b/i.test(cmd)) return 'test';
+  if (/\b(build|make|gradle|mvn)\b/i.test(cmd)) return 'build';
+  return null;
+}
+
+const CLAIMS: Array<[RegExp, RunKind]> = [
+  [/\b(all |the )?tests? (now )?(pass|passed|passing|are passing|green)|testler (geçti|geçiyor|başarılı)|\d+\/\d+ (tests )?pass/i, 'test'],
+  [/\bbuild (succeeds|succeeded|passes|passed|is green|works)|build (başarılı|geçti)/i, 'build'],
+  [/\b(lint|typecheck|tsc) (is )?(clean|passes|passed)|tsc (temiz|geçti)/i, 'typecheck'],
+];
+
+export interface SessionAnalysis {
+  sessionId: string;
+  platform: string;
+  first: string;
+  last: string;
+  eventCount: number;
+  requests: Array<{ turn: number; text: string }>;
+  files: Map<string, number>;
+  commands: Array<{ turn: number; cmd: string; failed: boolean }>;
+  fixes: Array<{ cmd: string; error: string; failTurn: number; fixTurn: number; edited: string[] }>;
+  open: Map<string, { error: string; turn: number; edited: Set<string> }>;
+  lastResponse: string;
+  toolRuns: number;
+  /** FR-05 claim check: kinds the final response says succeeded but no passing run backs up (flag only). */
+  unverifiedClaims: RunKind[];
+}
+
+export function analyzeSession(events: RawSessionEvent[]): SessionAnalysis | null {
   if (events.length === 0) return null;
   const sessionId = events[0].sessionId;
   const platform = events[0].platform;
@@ -37,6 +71,7 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
   const open = new Map<string, { error: string; turn: number; edited: Set<string> }>();
   let lastResponse = '';
   let toolRuns = 0;
+  let lastEditTurn = 0;
 
   events.forEach((e, i) => {
     const turn = i + 1;
@@ -54,6 +89,7 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
       const tool = String(p.tool || '');
       const isEdit = EDIT_TOOLS.test(tool);
       if (isEdit) {
+        lastEditTurn = turn;
         for (const f of filesOf(p)) {
           files.set(f, (files.get(f) || 0) + 1);
           for (const o of open.values()) o.edited.add(f);
@@ -75,6 +111,20 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
     }
   });
 
+  const unverifiedClaims: RunKind[] = [];
+  for (const [re, kind] of CLAIMS) {
+    if (!re.test(lastResponse)) continue;
+    const lastEdit = lastEditTurn;
+    const backed = commands.some((c) => !c.failed && runKind(c.cmd) === kind && c.turn >= lastEdit);
+    if (!backed && !unverifiedClaims.includes(kind)) unverifiedClaims.push(kind);
+  }
+  return { sessionId, platform, first, last, eventCount: events.length, requests, files, commands, fixes, open, lastResponse, toolRuns, unverifiedClaims };
+}
+
+export function buildSessionJourney(events: RawSessionEvent[], commits: string[] = []): string | null {
+  const a = analyzeSession(events);
+  if (!a) return null;
+  const { sessionId, platform, first, last, requests, files, commands, fixes, open, lastResponse, toolRuns } = a;
   const L: string[] = [
     `# Session Journey: \`${sessionId}\``,
     '',
@@ -82,7 +132,7 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
     '',
     `- **Platform:** ${platform}`,
     `- **Span:** ${first} → ${last}`,
-    `- **Events:** ${events.length} (${requests.length} user requests, ${toolRuns} tool runs, ${commands.filter((c) => c.failed).length} failed commands)`,
+    `- **Events:** ${a.eventCount} (${requests.length} user requests, ${toolRuns} tool runs, ${commands.filter((c) => c.failed).length} failed commands)`,
     '',
     '## What was asked',
     ...(requests.length ? requests.map((r) => `${requests.indexOf(r) + 1}. (turn ${r.turn}) ${clip(r.text, SHOW_PROMPT_CHARS)}`) : ['_No user prompts captured._']),
@@ -107,6 +157,12 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
     }
     for (const [cmd, o] of open) L.push(`- \`${clip(cmd, 100)}\` failed at turn ${o.turn} (${clip(o.error, 160)}) → **not resolved in this session**`);
     L.push('');
+  }
+  if (a.unverifiedClaims.length) {
+    L.push('## ⚠ Unverified claims', `The final response claims success (${a.unverifiedClaims.join(', ')}) but no passing run of that kind follows the last edit in this session. Flag only; nothing was blocked.`, '');
+  }
+  if (commits.length) {
+    L.push('## Commits during this session', ...commits.map((c) => `- ${c}`), '');
   }
   if (lastResponse) {
     L.push('## How it ended', clip(lastResponse, 800), '');

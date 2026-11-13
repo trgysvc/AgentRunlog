@@ -19,7 +19,8 @@ import { hasCompleteEvidence, isNonStructuralFailure } from './evidence.js';
 import { heuristicExtract } from './heuristic.js';
 import { buildSessionJourney } from './journey.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { buildLastSession, saveLastSession, loadLastSession, verifiedCommands, gitCommits, staleRecordIds } from './handoff.js';
 
 export interface ExtractedBundle {
   decisions: Decision[];
@@ -66,15 +67,26 @@ export class TranscriptExtractor {
     }
 
     const bundle = heuristicExtract(events);
-    this.writeJourney(events);
+    const projectRoot = dirname(this.storage.paths.root);
+    const commits = gitCommits(projectRoot, events[0].timestamp, events[events.length - 1].timestamp);
+    this.writeJourney(events, commits);
+
+    // Handoff + open work (works for any compile trigger, not only SessionEnd)
+    const lastRun = (bundle.runs || [])[(bundle.runs || []).length - 1];
+    const ls = buildLastSession(events, lastRun);
+    if (ls) {
+      saveLastSession(this.storage, ls);
+      if (ls.openWork) for (const t of bundle.tasks) t.status = 'in_progress';
+    }
+    if (commits.length) for (const t of bundle.tasks) t.commits = commits.map((c) => c.split(' ')[0]);
     this.compileSession(sessionFilePath, bundle);
     return bundle;
   }
 
   /** Writes wiki/runs/<session>.md (derived, safe to regenerate; raw/ is never touched). */
-  private writeJourney(events: RawSessionEvent[]): void {
+  private writeJourney(events: RawSessionEvent[], commits: string[] = []): void {
     try {
-      const md = buildSessionJourney(events);
+      const md = buildSessionJourney(events, commits);
       if (!md) return;
       mkdirSync(this.storage.paths.runs, { recursive: true });
       const safe = events[0].sessionId.replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -181,9 +193,12 @@ export class TranscriptExtractor {
     const ok = (c: string) => (rank[c] ?? 0) >= minRank;
     const maxTokens = this.storage.config.maxPushTokens || 800;
 
+    // Code sync: records whose cited files were all deleted/renamed are not pushed (still in wiki, flagged by lint)
+    const stale = staleRecordIds(this.storage, dirname(this.storage.paths.root));
+
     const recentDeadEnds = this.storage.wiki
       .listDeadEnds()
-      .filter((d) => ok(d.confidence) && d.status !== 'draft')
+      .filter((d) => ok(d.confidence) && d.status !== 'draft' && !stale.has(d.id))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 5)
       .map((de) => ({
@@ -197,7 +212,7 @@ export class TranscriptExtractor {
 
     const activeDecisions = this.storage.wiki
       .listDecisions()
-      .filter((x) => x.status === 'active' && ok(x.confidence) && !x.supersededBy)
+      .filter((x) => x.status === 'active' && ok(x.confidence) && !x.supersededBy && !stale.has(x.id))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((d) => ({
         id: d.id,
@@ -208,7 +223,7 @@ export class TranscriptExtractor {
 
     const recentRCAs = this.storage.wiki
       .listRCAs()
-      .filter((x) => ok(x.confidence) && x.status !== 'draft')
+      .filter((x) => ok(x.confidence) && x.status !== 'draft' && !stale.has(x.id))
       .slice(-3)
       .reverse()
       .map((r) => ({
@@ -218,7 +233,14 @@ export class TranscriptExtractor {
         resolution: r.resolution.slice(0, 120),
       }));
 
-    const build = () => ({ version: 1, lastUpdated: new Date().toISOString(), activeDecisions, recentDeadEnds, recentRCAs, estimatedTokens: 0 });
+    const last = loadLastSession(this.storage);
+    const verified = verifiedCommands(this.storage.wiki.listRuns());
+    this.writeGuardIndex(stale);
+
+    let lastSession: { sessionId: string; at: string; text: string } | undefined = last
+      ? { sessionId: last.sessionId, at: last.at, text: last.text }
+      : undefined;
+    const build = () => ({ version: 1, lastUpdated: new Date().toISOString(), activeDecisions, recentDeadEnds, recentRCAs, lastSession, verified, estimatedTokens: 0 });
     const measure = () => {
       const text = formatPushText(build(), Number.MAX_SAFE_INTEGER);
       return text ? countTokens(text) : 0;
@@ -226,13 +248,38 @@ export class TranscriptExtractor {
 
     // Drop the least valuable item until the injected text fits: RCAs, then decisions, then dead ends.
     let tokens = measure();
-    while (tokens > maxTokens && (recentRCAs.length || activeDecisions.length || recentDeadEnds.length)) {
-      if (recentRCAs.length) recentRCAs.pop();
+    while (tokens > maxTokens && (recentRCAs.length || activeDecisions.length || recentDeadEnds.length || verified.length || lastSession)) {
+      if (verified.length > 2) verified.pop();
+      else if (recentRCAs.length) recentRCAs.pop();
       else if (activeDecisions.length) activeDecisions.pop();
-      else recentDeadEnds.pop();
+      else if (recentDeadEnds.length) recentDeadEnds.pop();
+      else if (verified.length) verified.pop();
+      else lastSession = undefined;
       tokens = measure();
     }
 
     this.storage.cache.setActiveContext({ ...build(), estimatedTokens: tokens });
+  }
+
+  /**
+   * cache/guard_index.json: command-keyed known fixes / dead ends the light hook injects on the 2nd
+   * failure of the same command in one session (no model, no heavy imports at hook time).
+   */
+  private writeGuardIndex(stale: Set<string>): void {
+    try {
+      const entries: Array<{ id: string; kind: string; key: string; text: string }> = [];
+      for (const r of this.storage.wiki.listRCAs()) {
+        if (r.status === 'draft' || stale.has(r.id)) continue;
+        const key = r.title.replace(/^Command Failed:\s*/, '').trim();
+        if (key.length >= 4) entries.push({ id: r.id, kind: 'rca', key: key.slice(0, 160), text: `[${r.id}] Known fix: ${r.resolution.slice(0, 160)}` });
+      }
+      for (const d of this.storage.wiki.listDeadEnds()) {
+        if (d.status === 'draft' || stale.has(d.id)) continue;
+        const key = d.approach.trim();
+        if (key.length >= 6) entries.push({ id: d.id, kind: 'dead_end', key: key.slice(0, 160), text: `[${d.id}] Dead end: ${d.whyFailed.slice(0, 120)}. Retry only if: ${d.retryConditions.slice(0, 100)}` });
+      }
+      mkdirSync(this.storage.paths.cache, { recursive: true });
+      writeFileSync(join(this.storage.paths.cache, 'guard_index.json'), JSON.stringify(entries), 'utf8');
+    } catch {}
   }
 }

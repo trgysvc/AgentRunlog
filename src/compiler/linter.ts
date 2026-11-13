@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
+import { pathIsGone } from './handoff.js';
 
 export interface LintIssue {
   severity: 'error' | 'warning' | 'info';
@@ -127,6 +128,17 @@ export class WikiLinter {
         });
       }
     }
+
+    // 4. Code sync (all record types): cited files that were deleted/renamed
+    const flag = (id: string, type: LintIssue['recordType'], refs: string[], what: string) => {
+      const gone = refs.filter((r) => pathIsGone(this.projectRoot, r));
+      if (gone.length > 0 && gone.length === refs.length) {
+        issues.push({ severity: 'warning', code: 'STALE_CODE_REF', recordId: id, recordType: type, message: `${what}: every cited path is gone (${gone.slice(0, 3).join(', ')}); record is excluded from the push context.` });
+      }
+    };
+    for (const d of decisions) flag(d.id, 'decision', d.affectsModules, 'Decision');
+    for (const d of deadEnds) flag(d.id, 'dead_end', d.affectsModules, 'DeadEnd');
+    for (const r of rcas) flag(r.id, 'rca', r.affectsFiles, 'RCA');
 
     const errors = issues.filter((i) => i.severity === 'error').length;
     const warnings = issues.filter((i) => i.severity === 'warning').length;
