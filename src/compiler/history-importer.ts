@@ -207,7 +207,9 @@ export class HistoryImporter {
 
             const events = this.parseClaudeTranscript(fullPath, file.replace('.jsonl', ''), projDir);
             if (events.length > 0) {
-              const sessionId = `import_claude_${file.replace('.jsonl', '').slice(0, 8)}`;
+              // Same id the live hooks use, so one conversation = one record set (the transcript is the richer copy)
+              const sessionId = file.replace('.jsonl', '');
+              this.removeOwnImportedSession(`import_claude_${sessionId.slice(0, 8)}`); // legacy naming
               const written = this.writeImportedSession(sessionId, events);
               if (written > 0) {
                 claudeCount++;
@@ -477,7 +479,7 @@ export class HistoryImporter {
   /** Claude Code stores each project's sessions under ~/.claude/projects/<cwd with / and . replaced by ->. */
   /** Removes AgentRunlog's own derived copies of a wrongly imported session. Platform stores are never touched. */
   private removeOwnImportedSession(sessionId?: string): void {
-    if (!sessionId || !/^import_[A-Za-z0-9_]+$/.test(sessionId)) return;
+    if (!sessionId || !/^import_[A-Za-z0-9_]+$/.test(sessionId)) return; // only ever our own import_* copies
     for (const f of [join(this.storage.paths.raw, `session-${sessionId}.jsonl`), join(this.storage.paths.runs, `${sessionId}.md`)]) {
       try {
         if (existsSync(f)) unlinkSync(f);
@@ -527,7 +529,7 @@ export class HistoryImporter {
       const events: RawSessionEvent[] = [];
       const toolUses = new Map<string, { name: string; input: unknown }>();
       const ev = (eventType: RawSessionEvent['eventType'], timestamp: string, payload: Record<string, unknown>) =>
-        events.push({ sessionId, platform: 'claude_code', eventType, timestamp, payload });
+        events.push({ sessionId, platform: 'claude_code', eventType, timestamp, payload: { ...payload, imported: true } });
 
       for (const line of lines) {
         try {

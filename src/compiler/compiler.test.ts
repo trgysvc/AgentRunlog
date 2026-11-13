@@ -551,10 +551,11 @@ describe('Claude transcript parsing (real shape)', () => {
       antigravityBrainDir: join(dir, 'x1'), claudeProjectsDir: join(dir, 'claude'), codexSessionsDir: join(dir, 'x2'), cursorProjectsDir: join(dir, 'x3'),
     });
     expect(res.claudeSessionsImported).toBe(1);
-    const f = readdirSync(st.paths.raw).find((n) => n.includes('import_claude'))!;
+    const f = readdirSync(st.paths.raw).find((n) => n === 'session-s.jsonl')!;
     const evs = readFileSync(join(st.paths.raw, f), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(evs.map((e) => e.eventType)).toEqual(['prompt_submit', 'post_tool_use', 'agent_response']);
     expect(evs[1].payload.tool_input.command).toBe('npm test');
     expect(evs[1].payload.tool_response.is_error).toBe(true);
+    expect(evs[0].payload.imported).toBe(true);
   });
 });

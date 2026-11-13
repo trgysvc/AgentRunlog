@@ -44,7 +44,7 @@ export function heuristicExtract(events: RawSessionEvent[]): ExtractedBundle {
 
   if (events.length === 0) return bundle;
   const sessionId = events[0].sessionId;
-  const isHistoricalImport = sessionId.startsWith('import_');
+  const isHistoricalImport = sessionId.startsWith('import_') || events.some((e) => e.payload?.imported === true);
   const failureCounts = new Map<string, { count: number; lastError: string; timestamp: string; turnIndex: number }>();
 
   const decisionSignalRegex =
