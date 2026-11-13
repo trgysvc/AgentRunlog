@@ -442,7 +442,19 @@ Usage:
   }
 }
 
-main().catch((err) => {
-  console.error('Fatal CLI Error:', err);
-  process.exit(1);
-});
+// Every command except the long-running MCP server must terminate when its work is done: a lingering
+// handle (detached child, socket) must never leave a CLI/worker process hanging around.
+const isServer = command === 'mcp';
+main()
+  .then(() => {
+    if (!isServer) process.stdout.write('', () => process.exit(process.exitCode ?? 0));
+  })
+  .catch((err) => {
+    console.error('Fatal CLI Error:', err);
+    process.exit(1);
+  });
+
+// Background workers get a hard ceiling so a stuck one can never pile up (locks go stale after 10 min anyway).
+if (command === 'sync-history' || command === 'bootstrap' || command === 'compile') {
+  setTimeout(() => process.exit(0), 15 * 60 * 1000).unref();
+}

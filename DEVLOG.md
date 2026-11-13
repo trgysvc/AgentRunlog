@@ -327,3 +327,12 @@
 
 ### Doğrulama
 - `tsc` temiz, 53/53 test. Gerçek platformlarla uçtan uca çalıştırma henüz yapılmadı; Antigravity `SessionStart` çıktı şekli (`systemMessage` nesnesi / `userMessage` metni) doğrulanmadı.
+
+## [2026-11-13] — Faz 13: Gerçek Claude Oturumu Testi ve Kalan Açıkların Kapatılması
+
+- **Gerçek Claude Code oturumu (AgentRunlog reposunda):** hook'lar (session_start, prompt_submit, session_end), push enjeksiyonu, derleme, oturum yolu sayfası, otomatik geçmiş senkronu, MCP `get_active_context` ve `usage` doğrulandı.
+- **Geçmiş içe aktarma (IMPORT_VERSION 4):** Claude oturumları artık `cwd` ile projeye eşleştirilir (başka projeye sızma yok); `tool_use`/`tool_result` blokları ayrıştırılır; canlı oturum kimliği kullanılır (konuşma başına tek kayıt kümesi), içe aktarılan olaylar `imported` ile işaretlenir ve `draft` kalır. Eski `import_claude_*` kopyaları yalnızca AgentRunlog'un kendi dizininden temizlenir.
+- **MCP bağlantısı:** `.mcp.json` `${CLAUDE_PLUGIN_ROOT:-.}` kullanır; `claude mcp list` Connected.
+- **Takılma önlemi:** `mcp` dışındaki CLI komutları bitince açıkça çıkar; `sync-history`/`bootstrap`/`compile` için 15 dk'lık gözcü zamanlayıcı.
+- **Eşzamanlı oturumlar ve yaşam döngüsü:** iki oturumdan 40 paralel hook (300KB'lık yükler dahil) olay kaybetmeden/bozmadan yazılır; `pre-compact` ve `session-end` arka planda derleyip oturum sayfasını üretir (test eklendi, 55/55).
+- **Açık kalan:** gerçek Antigravity oturumu ve `SessionStart` çıktı şekli.

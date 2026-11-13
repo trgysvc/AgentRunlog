@@ -222,3 +222,49 @@ describe('Large hook payloads and disk usage', () => {
     expect(u.entries.find((e) => e.name === 'raw/')!.bytes).toBeGreaterThan(10 * 1024 * 1024);
   }, 30000);
 });
+
+describe('Concurrent sessions and lifecycle events (real hook bundle)', () => {
+  it('parallel hooks from two sessions never corrupt or lose events; session-end/pre-compact compile in background', async () => {
+    const { spawn } = await import('node:child_process');
+    const { mkdtempSync, writeFileSync, readFileSync, existsSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join, resolve } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_conc_'));
+    writeFileSync(join(dir, 'package.json'), '{"name":"conc"}');
+    // pre-bootstrap so workers do not race the test
+    const bootstrapDir = join(dir, '.agentrunlog', 'cache');
+    (await import('node:fs')).mkdirSync(bootstrapDir, { recursive: true });
+    writeFileSync(join(bootstrapDir, 'bootstrap.done'), 'x');
+    writeFileSync(join(bootstrapDir, 'history_sync.json'), JSON.stringify({ at: Date.now(), version: 99 }));
+
+    const run = (event: string, payload: object) =>
+      new Promise<number>((res) => {
+        const p = spawn('node', [resolve('bundle/hook.mjs'), 'claude', event], { cwd: dir, env: { ...process.env, AGENTRUNLOG_INTERNAL: '' }, stdio: ['pipe', 'ignore', 'ignore'] });
+        p.on('close', (c) => res(c ?? -1));
+        p.stdin.end(JSON.stringify({ cwd: dir, ...payload }));
+      });
+
+    const jobs: Promise<number>[] = [];
+    for (let i = 0; i < 20; i++) {
+      for (const sid of ['sessA', 'sessB']) {
+        const text = i % 7 === 0 ? 'x'.repeat(300_000) : `message ${i} from ${sid}`;
+        jobs.push(run('prompt-submit', { session_id: sid, prompt: text }));
+      }
+    }
+    const codes = await Promise.all(jobs);
+    expect(codes.every((c) => c === 0)).toBe(true);
+
+    for (const sid of ['sessA', 'sessB']) {
+      const lines = readFileSync(join(dir, '.agentrunlog', 'raw', `session-${sid}.jsonl`), 'utf8').split('\n').filter(Boolean);
+      expect(lines.length).toBe(20); // none lost
+      for (const l of lines) JSON.parse(l); // none corrupted/interleaved
+    }
+
+    await run('pre-compact', { session_id: 'sessA' });
+    await run('session-end', { session_id: 'sessB' });
+    const wiki = join(dir, '.agentrunlog', 'wiki', 'runs');
+    for (let i = 0; i < 100 && !(existsSync(join(wiki, 'sessB.md')) && existsSync(join(wiki, 'sessA.md'))); i++) await new Promise((r) => setTimeout(r, 200));
+    expect(existsSync(join(wiki, 'sessB.md'))).toBe(true);
+    expect(existsSync(join(wiki, 'sessA.md'))).toBe(true);
+  }, 60000);
+});
