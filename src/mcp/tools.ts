@@ -1,3 +1,4 @@
+import { applyReviewVerdict } from '../compiler/review.js';
 import { existsSync, appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { StorageManager } from '../storage/index.js';
@@ -346,6 +347,14 @@ export class RunlogMcpTools {
     storage.wiki.generateIndexAndModules();
     this.refreshCacheFromWiki(storage);
     return decision;
+  }
+
+  public reviewDecisionConflict(params: { idA: string; idB: string; verdict: 'conflict' | 'compatible'; winner?: string; projectRoot?: string }): string {
+    const storage = this.getStorage(params.projectRoot);
+    const msg = applyReviewVerdict(storage, params.idA, params.idB, params.verdict, params.winner);
+    storage.wiki.generateIndexAndModules();
+    this.refreshCacheFromWiki(storage);
+    return msg;
   }
 
   /**

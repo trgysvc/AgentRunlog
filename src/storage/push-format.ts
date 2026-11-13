@@ -9,6 +9,7 @@ export interface PushCacheShape {
   recentRCAs?: Array<{ id: string; title: string; incident: string; resolution: string }>;
   lastSession?: { sessionId: string; at: string; text: string };
   verified?: string[];
+  conflictReview?: Array<{ a: { id: string; title: string; choice: string }; b: { id: string; title: string; choice: string } }>;
 }
 
 /** NFR-07: 800 tokens ~= 3,200 characters. */
@@ -22,7 +23,7 @@ export function formatPushText(cache: PushCacheShape | null, charBudget: number 
   const deadEnds = cache.recentDeadEnds ?? [];
   const rcas = cache.recentRCAs ?? [];
   const verified = cache.verified ?? [];
-  if (decisions.length === 0 && deadEnds.length === 0 && rcas.length === 0 && !cache.lastSession && verified.length === 0) return null;
+  if (decisions.length === 0 && deadEnds.length === 0 && rcas.length === 0 && !cache.lastSession && verified.length === 0 && !(cache.conflictReview ?? []).length) return null;
 
   const START = '<!-- AGENTRUNLOG_CONTEXT_START -->';
   const END = '<!-- AGENTRUNLOG_CONTEXT_END -->';
@@ -58,6 +59,17 @@ export function formatPushText(cache: PushCacheShape | null, charBudget: number 
   }
   if (verified.length > 0) {
     blocks.push({ header: '### ✅ Verified commands:', lines: verified.map((v) => `- ${v}`) });
+  }
+
+  const review = cache.conflictReview ?? [];
+  if (review.length > 0) {
+    blocks.push({
+      header: '### 🔎 Decision conflict review (opt-in; uses your tokens):',
+      lines: [
+        ...review.map((r) => `- [${r.a.id}] ${r.a.choice}  VS  [${r.b.id}] ${r.b.choice}`),
+        '- Briefly compare each pair, ask the user if they conflict, then call `review_decision_conflict` (verdict conflict+winner, or compatible).',
+      ],
+    });
   }
 
   const out: string[] = [START];

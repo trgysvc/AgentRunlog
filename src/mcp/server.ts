@@ -188,6 +188,22 @@ export function createRunlogMcpServer(storageManager?: StorageManager): {
         },
       },
       {
+        name: 'review_decision_conflict',
+        description:
+          'Only when the user enabled LLM conflict review: report your verdict on two active decisions listed in the "Decision conflict review" section. Ask the user before choosing a winner.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            idA: { type: 'string' },
+            idB: { type: 'string' },
+            verdict: { type: 'string', enum: ['conflict', 'compatible'] },
+            winner: { type: 'string', description: 'For verdict "conflict": the decision id that stays (the other becomes superseded)' },
+            projectRoot: PROJECT_ROOT_PROP,
+          },
+          required: ['idA', 'idB', 'verdict'],
+        },
+      },
+      {
         name: 'record_rca',
         description: 'Record a Root Cause Analysis (RCA) of a bug or failure and its verified resolution.',
         inputSchema: {
@@ -307,6 +323,17 @@ export function createRunlogMcpServer(storageManager?: StorageManager): {
               },
             ],
           };
+        }
+
+        case 'review_decision_conflict': {
+          const text = tools.reviewDecisionConflict({
+            idA: String(args?.idA || ''),
+            idB: String(args?.idB || ''),
+            verdict: args?.verdict === 'conflict' ? 'conflict' : 'compatible',
+            winner: args?.winner ? String(args.winner) : undefined,
+            projectRoot,
+          });
+          return { content: [{ type: 'text', text }] };
         }
 
         case 'record_dead_end': {

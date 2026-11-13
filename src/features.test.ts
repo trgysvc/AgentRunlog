@@ -171,3 +171,41 @@ describe('repeated-failure guard on every platform (documented output shapes)', 
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('auto lint + opt-in LLM conflict review', () => {
+  const mkDec = (id: string, choice: string, mods: string[]) => ({
+    id, title: `T ${id}`, status: 'active', decidedBy: 'user', author: 'team', context: 'c', choice, supersedes: [], supersededBy: null,
+    affectsModules: mods, evidence: { sessionId: 's', timestamp: '2026-01-01T00:00:00.000Z' }, confidence: 'high',
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  it('is off by default; enabled -> pair in push; verdict supersedes; lint.json written on compile', async () => {
+    const dir = tmp();
+    const st = new StorageManager(dir);
+    expect(st.config.llmReview.enabled).toBe(false);
+    st.wiki.saveDecision(mkDec('DEC-001', 'Use REST', ['src/api/**']) as any);
+    st.wiki.saveDecision(mkDec('DEC-002', 'Use GraphQL', ['src/api/**']) as any);
+    new TranscriptExtractor(st).refreshActiveContextCache();
+    expect(st.cache.getActiveContext()?.conflictReview).toBeUndefined();
+    expect(existsSync(join(st.paths.cache, 'lint.json'))).toBe(true);
+
+    const cfg = JSON.parse(readFileSync(st.paths.config, 'utf8'));
+    cfg.llmReview = { enabled: true, consentAt: 'now' };
+    writeFileSync(st.paths.config, JSON.stringify(cfg));
+    const st2 = new StorageManager(dir);
+    new TranscriptExtractor(st2).refreshActiveContextCache();
+    const text = formatPushText(st2.cache.getActiveContext() as any)!;
+    expect(text).toContain('Decision conflict review');
+    expect(text).toContain('review_decision_conflict');
+
+    const { applyReviewVerdict } = await import('./compiler/review.js');
+    applyReviewVerdict(st2, 'DEC-001', 'DEC-002', 'conflict', 'DEC-002');
+    expect(st2.wiki.listDecisions().find((d) => d.id === 'DEC-001')?.status).toBe('superseded');
+    new TranscriptExtractor(st2).refreshActiveContextCache();
+    expect(st2.cache.getActiveContext()?.conflictReview).toBeUndefined();
+  });
+  it('verdict is refused while disabled', async () => {
+    const st = new StorageManager(tmp());
+    const { applyReviewVerdict } = await import('./compiler/review.js');
+    expect(() => applyReviewVerdict(st, 'A', 'B', 'compatible')).toThrow(/disabled/);
+  });
+});

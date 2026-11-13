@@ -109,3 +109,8 @@ The compiler synthesizes all active records into a single cache file with:
 - Strict token ceiling: **800 tokens** maximum, measured on the exact injected text (drops verified commands, RCAs, decisions, dead ends, then the handoff, in that order).
 
 Side caches written at compile time: `cache/last_session.json`, `cache/guard_index.json` (command-keyed fixes/dead ends the hook injects on a command's 2nd failure in one session; all four platforms, advisory; Antigravity defers delivery to the next PreInvocation via `cache/pending_guard.json`).
+
+
+## Addendum: auto-lint and opt-in conflict review
+- Every compile/reindex writes `cache/lint.json` (counts + first 20 issues).
+- `config.json` `llmReview {enabled=false, consentAt}`: when enabled, `active_context.json` may carry `conflictReview` (≤2 pairs of active decisions sharing `affectsModules`); `review_decision_conflict` (MCP) records the verdict; reviewed pairs live in `cache/reviewed_pairs.json`. AgentRunlog itself never calls a model.

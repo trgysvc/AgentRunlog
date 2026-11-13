@@ -25,6 +25,7 @@ Open a project in any agent and start working. On the first hook or MCP call Age
 runlog status    # records, token budget          runlog usage   # disk usage per folder
 runlog report    # impact: injections, repeated failures, unverified claims, stale records
 runlog lint      # stale file refs, broken supersedes, missing retry conditions
+runlog llm-review enable|disable|status   # opt-in: your agent's LLM reviews decision conflicts (spends tokens, off by default)
 runlog pause     # stop recording in this project (runlog resume to continue)
 runlog reindex   # rebuild wiki from raw/ (explicit MCP records are replayed from a journal)
 runlog scan --force   # re-import every past conversation
@@ -32,6 +33,9 @@ runlog scan --force   # re-import every past conversation
 
 ### MCP tools the agent can call
 `search_runlog`, `get_decision`, `get_rca`, `check_dead_ends`, `get_active_context`, and the live writers `record_decision`, `record_dead_end`, `record_rca`. Decisions saved through `record_decision` are active immediately; decisions guessed from prompt keywords stay `draft` and are never pushed.
+
+### Optional: LLM decision-conflict review (off by default)
+Works the same on all four platforms because it rides on the normal push + MCP. Enabling it (`runlog llm-review enable`) means your agent's model spends extra tokens each session; you confirm this once. Details in the README.
 
 ### Privacy controls
 `.agentrunlog/config.json` → `privacy.enabled: false` (record nothing) and `privacy.excludePatterns` (globs matched against paths and commands). `runlog pause` is the quick toggle. Your platforms' original conversation stores are only ever read, never modified.

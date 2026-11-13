@@ -104,10 +104,10 @@ Agents can actively query and record memory across workspaces (`projectRoot`) vi
 Every compiled session also gets a deterministic page, `wiki/runs/<session>.md`: what was asked, which files changed, which commands ran, and which errors were later resolved (failed command → passing run, with the files edited in between). Full text stays in `raw/`; the page points back by turn number. No model is involved.
 
 ### 4. Periodic Linting
-`runlog lint` (also surfaced in `runlog report`) audits the wiki on demand. It is not scheduled; run it when you want a check:
+The linter runs **automatically after every compile/reindex** (result in `cache/lint.json`, summarized by `runlog report`); `runlog lint` prints the full list on demand.
 - Flags records citing deleted or moved files (`STALE_CODE_REF`, `STALE_MODULE_REF`); such records are also kept out of the push.
 - Flags broken `supersedes` links, superseded decisions still marked active, low-confidence active decisions, and dead ends without retry conditions.
-- Semantic contradiction detection between two active decisions is **not implemented**; `supersedes` relations are the mechanism for replacing a decision.
+- **Optional, off by default — LLM decision-conflict review.** Detecting a *semantic* contradiction between two active decisions needs a model. AgentRunlog never calls one itself, so this uses your coding agent's own model and **spends your tokens**. Enable it explicitly with `runlog llm-review enable` (shows the cost warning and asks for confirmation; `--yes` to confirm non-interactively); `runlog llm-review disable` turns it off, `status` shows the state. When on, the compiler deterministically picks up to 2 pairs of active decisions that touch the same module (~150–250 extra tokens per session) and the push asks your agent to compare them, ask you which one stands, and report via the `review_decision_conflict` MCP tool (the loser becomes `superseded`; "compatible" pairs are never asked again). The tool refuses to act while the feature is disabled.
 
 ### 5. Handoff, Guardrail & Verification (no model, no SessionEnd dependency)
 
@@ -207,6 +207,7 @@ runlog usage     # Disk space used by AgentRunlog, per folder
 runlog scan --force  # Re-import every past conversation (full text, never truncated)
 runlog report    # Impact report: sessions, injections, repeated failures, unverified claims, stale records
 runlog pause     # Stop recording in this project (runlog resume to continue)
+runlog llm-review enable|disable|status  # Opt-in conflict review by your agent's LLM (uses tokens, off by default)
 runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR-10)
 ```
 
@@ -220,7 +221,7 @@ runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR
 - [x] **Capture Adapters**: Hook adapters for Claude Code, Google Antigravity, Cursor (own `.cursor/rules/agentrunlog.mdc`, never overwrites `.cursorrules`), and Codex CLI.
 - [x] **Handoff, verified commands, claim check, code sync, git link, repeated-failure guard** on all four platforms (see section 5).
 - [x] **Impact report, disk usage, pause/resume, exclude patterns, automatic history sync.**
-- [ ] Automatic/scheduled lint and semantic decision-conflict detection (manual `runlog lint` only).
+- [x] Automatic lint after every compile; opt-in (default off, token-cost consent) LLM decision-conflict review via the working agent.
 - [ ] Real-app verification of Cursor, Codex and Antigravity hooks (verified through the shipped hook with simulated payloads and the official docs; Claude Code verified end to end).
 - [x] **Codebase Bootstrap Scanner**: Automatic project scan on `runlog init` / `runlog scan` for existing in-progress repos.
 - [x] **Compiler Worker & Linter**: Deterministic offline compiler, `active_context.json` cache, `wiki/index.md` builder, `runlog lint`, and `runlog reindex`.

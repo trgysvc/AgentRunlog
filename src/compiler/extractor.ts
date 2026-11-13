@@ -20,6 +20,8 @@ import { heuristicExtract } from './heuristic.js';
 import { buildSessionJourney } from './journey.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { conflictCandidates } from './review.js';
+import { WikiLinter } from './linter.js';
 import { buildLastSession, saveLastSession, loadLastSession, verifiedCommands, gitCommits, staleRecordIds } from './handoff.js';
 
 export interface ExtractedBundle {
@@ -237,10 +239,11 @@ export class TranscriptExtractor {
     const verified = verifiedCommands(this.storage.wiki.listRuns());
     this.writeGuardIndex(stale);
 
+    const conflictReview = conflictCandidates(this.storage);
     let lastSession: { sessionId: string; at: string; text: string } | undefined = last
       ? { sessionId: last.sessionId, at: last.at, text: last.text }
       : undefined;
-    const build = () => ({ version: 1, lastUpdated: new Date().toISOString(), activeDecisions, recentDeadEnds, recentRCAs, lastSession, verified, estimatedTokens: 0 });
+    const build = () => ({ version: 1, lastUpdated: new Date().toISOString(), activeDecisions, recentDeadEnds, recentRCAs, lastSession, verified, conflictReview: conflictReview.length ? conflictReview : undefined, estimatedTokens: 0 });
     const measure = () => {
       const text = formatPushText(build(), Number.MAX_SAFE_INTEGER);
       return text ? countTokens(text) : 0;
@@ -248,8 +251,9 @@ export class TranscriptExtractor {
 
     // Drop the least valuable item until the injected text fits: RCAs, then decisions, then dead ends.
     let tokens = measure();
-    while (tokens > maxTokens && (recentRCAs.length || activeDecisions.length || recentDeadEnds.length || verified.length || lastSession)) {
-      if (verified.length > 2) verified.pop();
+    while (tokens > maxTokens && (recentRCAs.length || activeDecisions.length || recentDeadEnds.length || verified.length || lastSession || conflictReview.length)) {
+      if (conflictReview.length) conflictReview.pop();
+      else if (verified.length > 2) verified.pop();
       else if (recentRCAs.length) recentRCAs.pop();
       else if (activeDecisions.length) activeDecisions.pop();
       else if (recentDeadEnds.length) recentDeadEnds.pop();
@@ -259,6 +263,16 @@ export class TranscriptExtractor {
     }
 
     this.storage.cache.setActiveContext({ ...build(), estimatedTokens: tokens });
+    this.writeLintCache();
+  }
+
+  /** Automatic lint after every compile/reindex: result in cache/lint.json (shown by `runlog report`). */
+  private writeLintCache(): void {
+    try {
+      const r = new WikiLinter(this.storage, dirname(this.storage.paths.root)).lint();
+      mkdirSync(this.storage.paths.cache, { recursive: true });
+      writeFileSync(join(this.storage.paths.cache, 'lint.json'), JSON.stringify({ timestamp: r.timestamp, ...r.issueCount, issues: r.issues.slice(0, 20) }), 'utf8');
+    } catch {}
   }
 
   /**

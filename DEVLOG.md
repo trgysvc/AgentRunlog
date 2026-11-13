@@ -389,3 +389,8 @@ Platform dokümanları incelendi (Cursor, Codex, Antigravity hook sayfaları). B
 - **Antigravity**: PostToolUse çıktısı yalnızca `{}`; enjeksiyon belgelenmemiş. Uyarı `cache/pending_guard.json`'a yazılır, bir sonraki `PreInvocation`'da `injectSteps.systemMessage` ile verilir (bir kez).
 - `normalizeToolPayload` Cursor `error_message` ve Antigravity `toolCall` alanlarını da tanır (derleme bu platformların hatalarını görür).
 Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Cursor/Codex/Antigravity uygulamalarında denenmedi (kullanıcı kararı: Antigravity testi yok; diğerleri kurulu değil).
+
+## Faz 15 — Otomatik lint + opsiyonel LLM çelişki kontrolü
+- Lint her compile/reindex sonrası otomatik çalışır (`cache/lint.json`).
+- Çelişki kontrolü varsayılan KAPALI; `runlog llm-review enable` token maliyeti uyarısı + onay ister. AgentRunlog model çağırmaz: aday çiftleri belirler, çalışan ajan push üzerinden karşılaştırır ve `review_decision_conflict` MCP aracıyla bildirir. Kapalıyken araç reddeder.
+- Testler: 76/76.

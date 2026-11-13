@@ -150,6 +150,9 @@ export const ActiveContextCacheSchema = z.object({
   estimatedTokens: z.number().default(0),
   lastSession: z.object({ sessionId: z.string(), at: z.string(), text: z.string() }).optional(),
   verified: z.array(z.string()).optional(),
+  conflictReview: z
+    .array(z.object({ a: z.object({ id: z.string(), title: z.string(), choice: z.string() }), b: z.object({ id: z.string(), title: z.string(), choice: z.string() }) }))
+    .optional(),
 });
 export type ActiveContextCache = z.infer<typeof ActiveContextCacheSchema>;
 
@@ -177,6 +180,13 @@ export const RunlogConfigSchema = z.object({
       excludePatterns: z.array(z.string()).default([]), // globs: events touching matching paths/commands are never recorded
     })
     .default({ enabled: true, excludePatterns: [] }),
+  // Opt-in, default OFF: asks the user's own working agent (tokens!) to review decision conflicts.
+  llmReview: z
+    .object({
+      enabled: z.boolean().default(false),
+      consentAt: z.string().optional(),
+    })
+    .default({ enabled: false }),
 });
 export type RunlogConfig = z.infer<typeof RunlogConfigSchema>;
 

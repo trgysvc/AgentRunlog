@@ -29,6 +29,7 @@ AgentRunlog CLI — Typed Engineering Memory for Coding Agents
 
 Usage:
   runlog setup                Install plugins across ALL 4 platforms & run full verification
+  runlog llm-review [cmd]     Opt-in decision-conflict review by your agent's LLM (uses tokens; off by default)
   runlog install-plugin [plt] Install plugin (all | antigravity | claude | cursor | codex)
   runlog doctor               Verify all 4 platform plugins + live MCP JSON-RPC handshake
   runlog init [platform]      Initialize memory, scan codebase + history, and install project hooks
@@ -143,6 +144,53 @@ Usage:
     else rmSync(flag, { force: true });
     console.log(command === 'pause' ? '⏸  Recording paused: hooks capture nothing until `runlog resume`.' : '▶️  Recording resumed.');
     process.exit(0);
+  }
+
+  if (command === 'llm-review') {
+    const st = new StorageManager();
+    const sub = args[1] || 'status';
+    const raw = existsSync(st.paths.config) ? JSON.parse(readFileSync(st.paths.config, 'utf8')) : {};
+    const on = raw.llmReview?.enabled === true;
+    if (sub === 'status') {
+      console.log(`LLM decision-conflict review: ${on ? 'ENABLED' : 'disabled (default)'}${on && raw.llmReview?.consentAt ? ` (consent given ${raw.llmReview.consentAt})` : ''}`);
+      process.exit(0);
+    }
+    if (sub === 'disable') {
+      raw.llmReview = { enabled: false };
+      writeFileSync(st.paths.config, JSON.stringify(raw, null, 2), 'utf8');
+      console.log('LLM decision-conflict review disabled.');
+      process.exit(0);
+    }
+    if (sub === 'enable') {
+      console.log([
+        '⚠️  LLM decision-conflict review uses your coding agent\'s model and SPENDS TOKENS.',
+        '   AgentRunlog itself never calls a model. When enabled, session-start context will include up to 2 pairs',
+        '   of active decisions that touch the same module (~150-250 extra tokens per session) and ask your agent',
+        '   to compare them and ask you which one stands. Replies and tool calls are billed by your platform.',
+        '   You can turn it off any time: runlog llm-review disable',
+      ].join('\n'));
+      let ok = args.includes('--yes');
+      if (!ok) {
+        if (!process.stdin.isTTY) {
+          console.log('Not enabled: run this in a terminal to confirm, or pass --yes to confirm explicitly.');
+          process.exit(1);
+        }
+        const rl = (await import('node:readline/promises')).createInterface({ input: process.stdin, output: process.stdout });
+        const answer = (await rl.question('Enable and accept token usage? [y/N] ')).trim().toLowerCase();
+        rl.close();
+        ok = answer === 'y' || answer === 'yes';
+      }
+      if (!ok) {
+        console.log('Not enabled.');
+        process.exit(0);
+      }
+      raw.llmReview = { enabled: true, consentAt: new Date().toISOString() };
+      writeFileSync(st.paths.config, JSON.stringify(raw, null, 2), 'utf8');
+      console.log('✅ Enabled. It takes effect at the next compile.');
+      process.exit(0);
+    }
+    console.log('Usage: runlog llm-review [status|enable [--yes]|disable]');
+    process.exit(1);
   }
 
   if (command === 'usage') {
