@@ -97,7 +97,10 @@ Agents can actively query and record memory across workspaces (`projectRoot`) vi
 - `get_active_context()`: Instant pre-compiled project summary.
 - `record_decision` / `record_dead_end` / `record_rca`: Autonomous live recording during active conversations.
 
-### 3. Periodic Linting
+### 3. Session Journeys
+Every compiled session also gets a deterministic page, `wiki/runs/<session>.md`: what was asked, which files changed, which commands ran, and which errors were later resolved (failed command → passing run, with the files edited in between). Full text stays in `raw/`; the page points back by turn number. No model is involved.
+
+### 4. Periodic Linting
 A lightweight linter periodically scans the wiki:
 - Flags stale records referencing deleted or moved files.
 - Detects conflicting decisions and marks outdated ones.
@@ -108,6 +111,9 @@ A lightweight linter periodically scans the wiki:
 
 - **Sanitization by Default**: Regular expressions and pattern matchers strip credentials, bearer tokens, and private keys *before* anything is written to `raw/`.
 - **Git Safety**: Raw transcripts (`.agentrunlog/raw/`) are excluded from Git via `.gitignore`. Only the curated `wiki/` may be committed if team sharing is desired.
+- **Originals are never touched**: past conversations are only *read* from each platform's own store. Only AgentRunlog's own copies in `.agentrunlog/raw/` are ever replaced, and only after the new copy is fully written.
+- **No event loss, no truncation**: hook payloads have no size cap and imported conversations are stored in full. A payload that cannot be parsed is logged to `cache/hook-errors.log`, never silently dropped.
+- **Automatic history sync**: on session start the hook refreshes past-conversation imports in the background (at most every 30 min); nothing to run by hand.
 - **Non-blocking Execution**: Hook adapters are designed to be sub-millisecond, offloading compilation and extraction to background workers.
 
 ---
@@ -171,6 +177,8 @@ runlog scan [--alias name] # Scan codebase + past conversations across all 4 pla
 runlog status    # View active/superseded decisions, RCAs, dead ends, and token budget
 runlog compile   # Manually compile raw session transcripts into wiki pages
 runlog lint      # Audit wiki for stale file paths, missing retry conditions, or broken links
+runlog usage     # Disk space used by AgentRunlog, per folder
+runlog scan --force  # Re-import every past conversation (full text, never truncated)
 runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR-10)
 ```
 

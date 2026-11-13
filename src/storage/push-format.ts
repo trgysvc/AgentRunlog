@@ -12,6 +12,8 @@ export interface PushCacheShape {
 /** NFR-07: 800 tokens ~= 3,200 characters. */
 export const DEFAULT_PUSH_CHAR_BUDGET = 3200;
 
+const REMINDER = '_When the user confirms a lasting choice, call `record_decision` (MCP); before risky changes, call `check_dead_ends`._';
+
 export function formatPushText(cache: PushCacheShape | null, charBudget: number = DEFAULT_PUSH_CHAR_BUDGET): string | null {
   if (!cache) return null;
   const decisions = cache.activeDecisions ?? [];
@@ -45,7 +47,7 @@ export function formatPushText(cache: PushCacheShape | null, charBudget: number 
   }
 
   const out: string[] = [START];
-  let used = START.length + END.length + 2;
+  let used = START.length + END.length + REMINDER.length + 3;
   for (const block of blocks) {
     if (used + block.header.length + 1 > charBudget) break;
     out.push(block.header);
@@ -56,6 +58,7 @@ export function formatPushText(cache: PushCacheShape | null, charBudget: number 
       used += line.length + 1;
     }
   }
+  out.push(REMINDER);
   out.push(END);
-  return out.length > 2 ? out.join('\n') : null;
+  return out.length > 3 ? out.join('\n') : null;
 }

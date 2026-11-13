@@ -15,6 +15,9 @@ import { countTokens } from 'gpt-tokenizer/encoding/cl100k_base';
 import { formatPushText } from '../storage/push-format.js';
 import { hasCompleteEvidence, isNonStructuralFailure } from './evidence.js';
 import { heuristicExtract } from './heuristic.js';
+import { buildSessionJourney } from './journey.js';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 export interface ExtractedBundle {
   decisions: Decision[];
@@ -60,8 +63,20 @@ export class TranscriptExtractor {
     }
 
     const bundle = heuristicExtract(events);
+    this.writeJourney(events);
     this.compileSession(sessionFilePath, bundle);
     return bundle;
+  }
+
+  /** Writes wiki/runs/<session>.md (derived, safe to regenerate; raw/ is never touched). */
+  private writeJourney(events: RawSessionEvent[]): void {
+    try {
+      const md = buildSessionJourney(events);
+      if (!md) return;
+      mkdirSync(this.storage.paths.runs, { recursive: true });
+      const safe = events[0].sessionId.replace(/[^A-Za-z0-9_.-]/g, '_');
+      writeFileSync(join(this.storage.paths.runs, `${safe}.md`), md, 'utf8');
+    } catch {}
   }
 
   /**

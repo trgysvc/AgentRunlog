@@ -292,3 +292,38 @@
 
 
 
+
+
+---
+
+## [2026-11-13] — Faz 12: Denetim Düzeltmeleri, Modelsiz Mimari, Otomatik Geçmiş Senkronu
+
+### 1. Denetimden gelen düzeltmeler
+- **Antigravity hook formatı:** `hooks.json` artık gerçek biçimde (grup adı → olay listesi); `SessionStart/PreInvocation/PostInvocation/Stop` düz dizi, `PostToolUse` matcher'lı. stdin camelCase (`conversationId`, `workspacePaths`), çıktı `injectSteps` / `decision`. `formatHookOutput` her platformun çıktı lehçesini tek yerde üretir.
+- **Push zamanı (R13):** bağlam yalnızca `SessionStart`'ta, bir kez enjekte edilir.
+- **MCP (R9):** `record_*` kayıt kimlikleri çakışmaz (`nextRecordId`), girdi sanitizasyondan geçer.
+- **Güven (R11/R12):** tarayıcı/geçmişten gelen kararlar `draft`; kararlar ve dead-end'ler yeniden eskiye sıralı. `trustedImport` seçeneği yalnızca geçmiş içe aktarmanın, özyineleme kalkanını (`AGENTRUNLOG_INTERNAL`) aşmasına izin verir.
+
+### 2. Model çağrısı tamamen kaldırıldı
+- `llm-client.ts` silindi; `heuristic.ts` (`heuristicExtract`, `normalizeToolPayload`) deterministik, çevrimdışı çıkarım yapar. Provider/model/endpoint ayarları şemadan çıktı. **Ürün yönü:** önemli olan yapılan iş ve kullanıcı ile yazılımın nasıl ilerlediği; model değil.
+
+### 3. Geçmiş içe aktarmada kırpma yok
+- İçe aktarılan mesajlar artık hiçbir şekilde kırpılmaz (süreç bütünlüğü). `runlog scan --force` bütün konuşmaları yeniden alır.
+- **Orijinal platform kayıtlarına asla dokunulmaz** (yalnızca okunur). Yalnızca AgentRunlog'un kendi kopyası (`.agentrunlog/raw/`) yenilenir ve bu da güvenlidir: eski kopya `.prev` olarak kenara alınır, yeni kopya tam yazılırsa silinir, yarım kalırsa geri konur.
+
+### 4. Kullanıcı komut çalıştırmadan otomatik geçmiş senkronu
+- `IMPORT_VERSION` (şu an 2): eski sürümle (kırpılmış) alınmış projeler bir sonraki oturumda bir kez tam metinle yeniden alınır.
+- `SessionStart` hook'u `cache/history_sync.json`'a bakar; yoksa, sürüm eskiyse ya da 30 dakikadan eskiyse detached `sync-history` işçisini başlatır (kilitli, artımlı, ardından derleme).
+
+### 5. Olay kaybı yok (hook stdin)
+- 8MB üst sınırı kaldırıldı. Akış bitene kadar beklenir; yalnızca ilk bayt 1 sn içinde gelmezse ya da 5 sn sessizlik olursa vazgeçilir. Ayrıştırılamayan yük sessizce atılmaz, `cache/hook-errors.log`'a yazılır. 10MB'lık olayla test edildi.
+
+### 6. Disk kullanımı: `runlog usage`
+- `.agentrunlog/` altındaki klasörleri (raw, wiki, cache, …) dosya sayısı ve toplamla gösterir (`src/storage/usage.ts`).
+
+### 7. Oturum yolu özeti (`src/compiler/journey.ts`)
+- Her derlenen oturum için modelsiz `wiki/runs/<oturum>.md`: istenenler, değişen dosyalar, çalıştırılan komutlar, **hata → düzeltme çiftleri** (başarısız komut, sonradan geçen aynı komut ve arada düzenlenen dosyalar), çözülmemiş hatalar ve oturumun nasıl bittiği. Tam metin `raw/`'da kalır; özet tur numarasıyla ona işaret eder. `wiki/index.md`'de "Recent Sessions" bölümü.
+- Push metnine tek satırlık hatırlatma eklendi: kalıcı bir seçim onaylanırsa `record_decision`, riskli değişiklik öncesi `check_dead_ends` (800 token bütçesine dahil).
+
+### Doğrulama
+- `tsc` temiz, 53/53 test. Gerçek platformlarla uçtan uca çalıştırma henüz yapılmadı; Antigravity `SessionStart` çıktı şekli (`systemMessage` nesnesi / `userMessage` metni) doğrulanmadı.

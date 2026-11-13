@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import matter from 'gray-matter';
 import {
@@ -158,6 +158,21 @@ export class WikiManager {
   /**
    * Generates wiki/index.md and module-based context pages wiki/modules/*.md (FR-08)
    */
+  /** "Recent Sessions" index lines from wiki/runs/*.md (newest first, max 15). */
+  private recentRunsSection(): string[] {
+    try {
+      const files = readdirSync(this.paths.runs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => ({ f, t: statSync(join(this.paths.runs, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t)
+        .slice(0, 15);
+      if (files.length === 0) return [];
+      return ['\n## Recent Sessions (how the work went)', ...files.map((x) => `- [${x.f.replace(/\.md$/, '')}](runs/${x.f})`)];
+    } catch {
+      return [];
+    }
+  }
+
   public generateIndexAndModules(): void {
     const decisions = this.listDecisions();
     const deadEnds = this.listDeadEnds();
@@ -256,6 +271,7 @@ export class WikiManager {
             ),
           ]
         : []),
+      ...this.recentRunsSection(),
       '\n## Known Dead Ends (Soft Guardrail)',
       '| ID | Title | Why Failed | Retry Conditions |',
       '| :--- | :--- | :--- | :--- |',

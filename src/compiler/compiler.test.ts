@@ -492,3 +492,31 @@ describe('Automatic history sync safety', () => {
     void p; void writeFileSync;
   });
 });
+
+describe('Session journey', () => {
+  it('summarises requests, edited files and resolved errors into wiki/runs', async () => {
+    const { buildSessionJourney } = await import('./journey.js');
+    const t = new Date().toISOString();
+    const mk = (eventType: string, payload: any) => ({ sessionId: 's1', platform: 'claude_code', eventType, timestamp: t, payload }) as any;
+    const md = buildSessionJourney([
+      mk('prompt_submit', { text: 'Fix the failing build' }),
+      mk('post_tool_use', { tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stderr: 'TypeError: x is undefined', exit_code: 1 } }),
+      mk('post_tool_use', { tool_name: 'Edit', tool_input: { file_path: 'src/a.ts' } }),
+      mk('post_tool_use', { tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { exit_code: 0 } }),
+      mk('agent_response', { text: 'Build is green again.' }),
+    ])!;
+    expect(md).toContain('Fix the failing build');
+    expect(md).toContain('`src/a.ts`');
+    expect(md).toMatch(/failed at turn 2[\s\S]*passed at turn 4[\s\S]*src\/a\.ts/);
+    expect(md).toContain('Build is green again.');
+
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_jr_'));
+    const st = new StorageManager(dir);
+    const { writeFileSync } = await import('node:fs');
+    const f = join(st.paths.raw, 'session-s1.jsonl');
+    writeFileSync(f, [mk('prompt_submit', { text: 'hello there friend' })].map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await new TranscriptExtractor(st).extractAndCompile(f);
+    expect(existsSync(join(st.paths.runs, 's1.md'))).toBe(true);
+    expect(readFileSync(st.paths.wikiIndex, 'utf8')).toContain('Recent Sessions');
+  });
+});
