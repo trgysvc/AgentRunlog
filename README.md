@@ -82,11 +82,12 @@ Unlike generic semantic vector stores that dump unstructured text, AgentRunlog o
 
 ## 🔄 How It Works
 
-### 1. Push (Proactive Injection — `< 20ms` SLA)
+### 1. Push (Proactive Injection — ~30ms hook, Node-startup bound)
 When a new agent session starts, AgentRunlog reads `.agentrunlog/cache/active_context.json` (`< 5ms`) and injects high-priority context:
 - Active architectural decisions (automatically excluding `superseded` ones).
 - Known dead ends with explicit `retryConditions` (Soft Guardrail — warns without blocking).
 - Recent root cause analyses (RCAs) for fast failure recall.
+- A short handoff of the last session (open work) and the latest verified test/build/lint commands.
 - Strictly capped at **800 tokens** to prevent context pollution.
 
 ### 2. Pull & Live Record (MCP Server)
@@ -105,6 +106,16 @@ A lightweight linter periodically scans the wiki:
 - Flags stale records referencing deleted or moved files.
 - Detects conflicting decisions and marks outdated ones.
 
+### 5. Handoff, Guardrail & Verification (no model, no SessionEnd dependency)
+
+- **Last session handoff** and **verified commands** are pushed at session start (within the 800-token ceiling).
+- **Repeated-failure guard**: the 2nd failure of the same command in a session injects the known RCA / dead end (Claude Code, advisory only).
+- **Code sync**: records whose cited files were all deleted are not pushed and are flagged by `lint` / `report`.
+- **Claim check**: "tests pass" claims without a passing run are flagged in the session journey and `report`.
+- **Git link**: commits made during a session are attached to its task and journey page.
+
+Compilation never depends on `SessionEnd` (not every Claude session fires it): it also runs after 25 uncompiled turns, on `PreCompact`, and at the next session start if a previous session left turns behind.
+
 ---
 
 ## 🔒 Privacy & Safety First
@@ -114,7 +125,8 @@ A lightweight linter periodically scans the wiki:
 - **Originals are never touched**: past conversations are only *read* from each platform's own store. Only AgentRunlog's own copies in `.agentrunlog/raw/` are ever replaced, and only after the new copy is fully written.
 - **No event loss, no truncation**: hook payloads have no size cap and imported conversations are stored in full. A payload that cannot be parsed is logged to `cache/hook-errors.log`, never silently dropped.
 - **Automatic history sync**: on session start the hook refreshes past-conversation imports in the background (at most every 30 min); nothing to run by hand.
-- **Non-blocking Execution**: Hook adapters are designed to be sub-millisecond, offloading compilation and extraction to background workers.
+- **Opt-out & exclusions**: `runlog pause` / `runlog resume` (or `privacy.enabled=false` in `config.json`) stop all recording in a project; `privacy.excludePatterns` (globs) skip matching paths and commands.
+- **Non-blocking Execution**: Hook adapters are dependency-free and small (~30ms, mostly Node startup), offloading compilation and extraction to background workers.
 
 ---
 
@@ -165,11 +177,11 @@ You **never** need to say *"save this"* or *"update memory"*. Simply talk to you
 - **Autonomous Live Recording:** When you naturally confirm a choice (*"Let's use Drizzle ORM instead of Prisma"*), the plugin rules instruct the agent to silently call `record_decision` in the background.
 - **History matching:** Claude Code transcripts are matched to a project by their recorded `cwd`, so a project never imports another project's conversations. A conversation keeps one record set (live and imported copies share the session id).
 - **Explicit vs. guessed decisions:** decisions saved through `record_decision` are active immediately and survive `reindex`; decisions guessed from prompt keywords are always `draft` and never pushed.
-- **Automatic Session Compilation:** When your session ends (`Stop` / `SessionEnd` / `PreCompact`), the detached background compiler automatically extracts Decisions, RCAs, and repeated-failure Dead Ends into `.agentrunlog/wiki/` and updates `active_context.json`.
+- **Automatic Session Compilation:** After 25 uncompiled turns, on `PreCompact` / `SessionEnd`, or at the next session start (crash recovery), the detached background compiler automatically extracts Decisions, RCAs, and repeated-failure Dead Ends into `.agentrunlog/wiki/` and updates `active_context.json`.
 
 ### Step 3: Next Session (Automatic Memory Recall)
 When you open a new chat tomorrow or switch between Claude Code, Antigravity, Cursor, and Codex:
-- **Push:** On the first turn, the hook injects active decisions, recent RCAs, and dead ends (< 800 tokens, < 20ms).
+- **Push:** On the first turn, the hook injects active decisions, recent RCAs, and dead ends (< 800 tokens, ~30ms).
 - **Pull:** Before touching risky architecture, the agent automatically checks `check_dead_ends` and `search_runlog` via MCP so past mistakes are never repeated.
 
 ### Step 4: Maintenance & Verification Commands
@@ -181,6 +193,8 @@ runlog compile   # Manually compile raw session transcripts into wiki pages
 runlog lint      # Audit wiki for stale file paths, missing retry conditions, or broken links
 runlog usage     # Disk space used by AgentRunlog, per folder
 runlog scan --force  # Re-import every past conversation (full text, never truncated)
+runlog report    # Impact report: sessions, injections, repeated failures, unverified claims, stale records
+runlog pause     # Stop recording in this project (runlog resume to continue)
 runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR-10)
 ```
 
@@ -200,12 +214,3 @@ runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR
 ## 📄 License
 
 MIT © [Turgay Savacı](https://github.com/trgysvc)
-
-
-## Handoff, guardrail and verification (no model, no SessionEnd dependency)
-
-- **Last session handoff** and **verified commands** are pushed at session start (within the 800-token ceiling).
-- **Repeated-failure guard**: the 2nd failure of the same command in a session injects the known RCA / dead end (Claude Code, advisory only).
-- **Code sync**: records whose cited files were all deleted are not pushed and are flagged by `lint` / `report`.
-- **Claim check**: "tests pass" claims without a passing run are flagged in the session journey and `report`.
-- **Git link**: commits made during a session are attached to its task and journey page.

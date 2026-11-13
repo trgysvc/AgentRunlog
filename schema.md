@@ -92,7 +92,7 @@ Body Markdown Sections:
 ---
 
 ### 2.4 Task / Work Done (`wiki/tasks/TASK-*.md`)
-Tracks committed units of work with status and affected files.
+Tracks units of work with status (`completed` / `in_progress` when the session ended with an unresolved failure or failing last run) and affected files. Optional `commits`: short git hashes made during the session (compile-time `git log`, omitted without a repo).
 
 ### 2.5 Run (`wiki/runs/RUN-*.md`)
 Tracks build, test, or benchmark execution outputs.
@@ -103,4 +103,9 @@ Tracks build, test, or benchmark execution outputs.
 The compiler synthesizes all active records into a single cache file with:
 - Top active decisions (`status == 'active'` and `confidence != 'low'`).
 - Recent dead ends to warn against.
-- Strict token ceiling: **800 tokens** maximum.
+- `lastSession`: capped (~400 char) handoff of the most recent session: last request, touched files, open work.
+- `verified`: latest passing test/build/lint/typecheck command per kind.
+- Records whose every cited file was deleted or renamed are excluded (still in the wiki; `lint` reports `STALE_CODE_REF`).
+- Strict token ceiling: **800 tokens** maximum, measured on the exact injected text (drops verified commands, RCAs, decisions, dead ends, then the handoff, in that order).
+
+Side caches written at compile time: `cache/last_session.json`, `cache/guard_index.json` (command-keyed fixes/dead ends the hook injects on a command's 2nd failure in one session; Claude Code only, advisory).

@@ -3473,7 +3473,7 @@ Usage:
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
   runlog mcp                  Start Model Context Protocol (MCP) server over stdio
-  runlog hook <plt> <evt>     Execute platform hook event with stdin capture (< 20ms SLA)
+  runlog hook <plt> <evt>     Execute platform hook event with stdin capture (~30ms, Node-startup bound)
 `);return}if(be==="setup"||be==="install-plugin"){let r=be==="setup"?"all":(pt[1]||"all").toLowerCase(),n=new fo;console.log("\u{1F50C} Installing AgentRunlog Plugin Bundle...");let i;r==="all"?i=n.installAll():r==="antigravity"?i=[n.installAntigravity()]:r==="claude"?i=[n.installClaudeCode()]:r==="cursor"?i=[n.installCursor()]:r==="codex"?i=[n.installCodex()]:(console.error(`\u274C Unknown platform: ${r}. Use: all | antigravity | claude | cursor | codex`),process.exit(1));for(let a of i){console.log(`\u2705 ${a.platform.toUpperCase()}: Configured (${a.paths.length} files)`);for(let o of a.paths)console.log(`   - ${o}`)}if(be==="setup"||r==="all"){console.log(`
 \u{1FA7A} Running System Verification (runlog doctor)...`);let o=await new yo().runAllChecks();for(let s of o.checks)console.log(`${s.ok?"\u2705":"\u274C"} ${s.component}: ${s.details}`);o.allHealthy||(console.warn(`
 \u26A0\uFE0F Some checks failed. Please review the messages above.`),process.exit(1)),console.log(`
@@ -3500,6 +3500,9 @@ Usage:
                               (--force re-imports every conversation, ignoring the unchanged-file cache)
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
+  runlog pause | resume       Stop / resume recording in this project (NFR-03 opt-out)
+  runlog usage                Show how much disk space AgentRunlog uses (per folder)
+  runlog report               Impact report: sessions, injections, records, repeated failures
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
 `);break}}var iL=be==="mcp";nL().then(()=>{iL||process.stdout.write("",()=>process.exit(process.exitCode??0))}).catch(e=>{console.error("Fatal CLI Error:",e),process.exit(1)});(be==="sync-history"||be==="bootstrap"||be==="compile")&&setTimeout(()=>process.exit(0),900*1e3).unref();

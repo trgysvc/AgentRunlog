@@ -43,7 +43,7 @@ Usage:
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
   runlog mcp                  Start Model Context Protocol (MCP) server over stdio
-  runlog hook <plt> <evt>     Execute platform hook event with stdin capture (< 20ms SLA)
+  runlog hook <plt> <evt>     Execute platform hook event with stdin capture (~30ms, Node-startup bound)
 `);
     return;
   }
@@ -465,6 +465,9 @@ Usage:
                               (--force re-imports every conversation, ignoring the unchanged-file cache)
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
+  runlog pause | resume       Stop / resume recording in this project (NFR-03 opt-out)
+  runlog usage                Show how much disk space AgentRunlog uses (per folder)
+  runlog report               Impact report: sessions, injections, records, repeated failures
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
 `);
