@@ -25,8 +25,16 @@ Across coding sessions, **context is lost**:
 
 AgentRunlog acts as a non-intrusive context layer across the 4 major coding platforms:
 
-| Platform | Primary Integration | Injection Mechanism | Capture Event |
+| Platform | Hooks registered | Context injection | Repeated-failure guard |
 | :--- | :--- | :--- | :--- |
+| **Claude Code** | `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `Stop`, `SessionEnd` | `SessionStart` stdout | `PostToolUseFailure` → `additionalContext` |
+| **Google Antigravity** | `SessionStart`, `PreInvocation`, `PostInvocation`, `PostToolUse`, `Stop` | `SessionStart` → `injectSteps` | stashed, delivered at next `PreInvocation` |
+| **Cursor** | `sessionStart`, `beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `preCompact`, `stop` (+ always-on rule) | `sessionStart` → `additional_context`; rule + MCP pull as fallback | `postToolUseFailure` → `additional_context` |
+| **Codex CLI** | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` | `SessionStart` output | `PostToolUse` → `additionalContext` (hooks must be trusted in `/hooks`) |
+
+📖 **Per-platform setup, behaviour and troubleshooting:** [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md)
+
+--- | :--- | :--- | :--- |
 | **Claude Code** | Native Plugin Hooks (`hooks.json`) | `SessionStart`, `PreToolUse` | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionEnd` |
 | **Google Antigravity** | Agent Hooks & Extensions (`hooks.json`) | `PreInvocation` | `PostInvocation`, `Stop` |
 | **Cursor** | Cursor Hooks (`hooks.json`) & Rules | Rules injection + MCP pull | `afterAgentResponse`, `preCompact`, `stop` |
@@ -120,6 +128,8 @@ A lightweight linter periodically scans the wiki:
 | Cursor | `postToolUseFailure` (`error_message`) | `additional_context` |
 | Codex CLI | `PostToolUse` after a non-zero Bash exit (exit code parsed from `tool_response`) | `hookSpecificOutput.additionalContext` |
 | Antigravity | `PostToolUse` `error` (its output must be `{}`) | stashed, then `injectSteps` at the next `PreInvocation` |
+
+Platform notes: Antigravity cannot inject text from `PostToolUse`, so its advisory arrives at the next model call; Cursor's guard relies on the documented `postToolUseFailure` event; Codex requires hooks to be trusted once via `/hooks`. Details in [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md).
 
 Compilation never depends on `SessionEnd` (not every Claude session fires it): it also runs after 25 uncompiled turns, on `PreCompact`, and at the next session start if a previous session left turns behind.
 
