@@ -37,6 +37,11 @@ export class CursorHookAdapter {
             command: `${cliBinPath} hook cursor post-tool-use`,
           },
         ],
+        postToolUseFailure: [
+          {
+            command: `${cliBinPath} hook cursor post-tool-use-failure`,
+          },
+        ],
         preCompact: [
           {
             command: `${cliBinPath} hook cursor pre-compact`,

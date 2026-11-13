@@ -380,3 +380,12 @@ Karar: derleme tetikleyicileri SessionEnd'e bağlı değil. Gerçek Claude'da Se
 6. **Git bağı**: derleme `git log --since/--until` ile oturum commit'lerini Task.commits ve journey sayfasına yazar; repo yoksa sessizce atlanır.
 
 Testler: `src/features.test.ts` (6 yeni), toplam 71/71, tsc temiz.
+
+## Faz 14 — ek: koruma 4 platformda
+
+Platform dokümanları incelendi (Cursor, Codex, Antigravity hook sayfaları). Bulgular ve uygulama:
+- **Cursor**: `postToolUse` yalnızca başarıda tetiklenir; hata `postToolUseFailure` (`error_message`) ile gelir ve `additional_context` döndürebilir. Manifeste `postToolUseFailure` eklendi. (Forumda postToolUse için bağlam teslim hatası raporu var; biz belgelenmiş hata olayını kullanıyoruz.)
+- **Codex**: PostToolUse non-zero Bash çıkışından sonra da çalışır, çıkış kodu alanı yok → `tool_response` içinden kod/“exited with code N” ayrıştırılır; `hookSpecificOutput.additionalContext` "developer context" olarak eklenir. Düz stdout yok sayılır.
+- **Antigravity**: PostToolUse çıktısı yalnızca `{}`; enjeksiyon belgelenmemiş. Uyarı `cache/pending_guard.json`'a yazılır, bir sonraki `PreInvocation`'da `injectSteps.systemMessage` ile verilir (bir kez).
+- `normalizeToolPayload` Cursor `error_message` ve Antigravity `toolCall` alanlarını da tanır (derleme bu platformların hatalarını görür).
+Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Cursor/Codex/Antigravity uygulamalarında denenmedi (kullanıcı kararı: Antigravity testi yok; diğerleri kurulu değil).

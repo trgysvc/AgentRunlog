@@ -4,7 +4,7 @@
  * No LLM call ever happens here (ZERO_IN_HOOK_LLM).
  */
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { defaultSanitizer } from '../sanitizer/index.js';
 import { formatPushText } from '../storage/push-format.js';
@@ -125,14 +125,31 @@ function matchesExclusion(payload: Record<string, unknown>, patterns: string[]):
   return strings.some((str) => res.some((r) => r.test(str)));
 }
 
+/**
+ * Failure detection per platform (from each platform's hook docs):
+ * - Claude Code: PostToolUseFailure / `error`.
+ * - Cursor: postToolUseFailure delivers `error_message` (postToolUse fires on success only).
+ * - Antigravity: PostToolUse carries `error` (non-empty on failure) and `toolCall.args.CommandLine`.
+ * - Codex: PostToolUse also runs after non-zero Bash exits; there is no exit-code field, so look into
+ *   tool_response for an exit code, falling back to "exited with code N" text.
+ */
 function failureKey(payload: Record<string, any>): string | null {
   const ti = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  const tc = payload.toolCall && typeof payload.toolCall === 'object' ? payload.toolCall : {};
+  const resp = payload.tool_response;
+  const respObj = resp && typeof resp === 'object' ? (resp as Record<string, any>) : {};
+  const respText = typeof resp === 'string' ? resp : typeof respObj.output === 'string' ? respObj.output : typeof respObj.stderr === 'string' ? respObj.stderr : '';
+  const code = respObj.exit_code ?? respObj.exitCode ?? respObj.metadata?.exit_code;
   const failed =
     payload.hook_event_name === 'PostToolUseFailure' ||
+    payload.hook_event_name === 'postToolUseFailure' ||
     (typeof payload.error === 'string' && payload.error.length > 0) ||
-    (typeof payload.exitCode === 'number' && payload.exitCode !== 0);
+    (typeof payload.error_message === 'string' && payload.error_message.length > 0) ||
+    (typeof payload.exitCode === 'number' && payload.exitCode !== 0) ||
+    (typeof code === 'number' && code !== 0) ||
+    /\b(?:exit(?:ed)?(?: with)?(?: status| code)?[: ]+)([1-9]\d*)\b/i.test(respText.slice(0, 2000));
   if (!failed) return null;
-  const cmd = String(ti.command ?? payload.command ?? payload.tool_name ?? payload.tool ?? '').replace(/\s+/g, ' ').trim();
+  const cmd = String(ti.command ?? tc.args?.CommandLine ?? tc.args?.command ?? payload.command ?? payload.tool_name ?? tc.name ?? payload.tool ?? '').replace(/\s+/g, ' ').trim();
   return cmd ? cmd.slice(0, 160) : null;
 }
 
@@ -207,6 +224,24 @@ export function runLightHook(input: LightHookInput): string | null {
   // 1b. Repeated-failure guardrail: on the 2nd failure of the same command in a session, surface the known fix / dead end.
   let guard: string | null = null;
   if (mapped === 'post_tool_use' && sessionId && !optedOut && !excluded) guard = repeatedFailureGuard(cacheDir, sessionId, payload);
+  if (platform === 'antigravity') {
+    // Antigravity PostToolUse output is `{}` only; deliver at the next PreInvocation (injectSteps is documented there).
+    const pend = join(cacheDir, 'pending_guard.json');
+    if (guard) {
+      try {
+        writeFileSync(pend, JSON.stringify({ sessionId, text: guard }), 'utf8');
+      } catch {}
+      guard = null;
+    } else if (event === 'pre-invocation') {
+      const pg = readJson(pend);
+      if (pg?.text && pg.sessionId === sessionId) {
+        guard = pg.text;
+        try {
+          rmSync(pend, { force: true });
+        } catch {}
+      }
+    }
+  }
 
   // 2. Push: static pre-compiled cache only (FR-19).
   let push: string | null = null;
@@ -258,9 +293,12 @@ export function formatHookOutput(platform: string, event: string, push: string |
   const p = platform.toLowerCase();
   const e = event.toLowerCase();
   if (push && push.startsWith('<!-- AGENTRUNLOG_GUARD -->')) {
-    // Tool-time advisory: only Claude Code documents additionalContext for post-tool hooks.
-    if (p.includes('claude') && (e === 'post-tool-use' || e === 'posttooluse' || e === 'post-tool-use-failure' || e === 'posttoolusefailure')) {
-      const name = e.includes('failure') ? 'PostToolUseFailure' : 'PostToolUse';
+    // Tool-time advisory, in each platform's documented output shape.
+    const postTool = e === 'post-tool-use' || e === 'posttooluse' || e === 'post-tool-use-failure' || e === 'posttoolusefailure';
+    if (p.includes('cursor')) return e.includes('failure') ? JSON.stringify({ additional_context: push }) : null; // postToolUseFailure
+    if (p.includes('antigravity')) return e === 'pre-invocation' ? JSON.stringify({ injectSteps: [{ systemMessage: { systemMessage: push } }] }) : '{}';
+    if (postTool) {
+      const name = e.includes('failure') ? 'PostToolUseFailure' : 'PostToolUse'; // Claude Code and Codex share this envelope
       return JSON.stringify({ hookSpecificOutput: { hookEventName: name, additionalContext: push } });
     }
     return null;

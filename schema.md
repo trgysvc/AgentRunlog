@@ -108,4 +108,4 @@ The compiler synthesizes all active records into a single cache file with:
 - Records whose every cited file was deleted or renamed are excluded (still in the wiki; `lint` reports `STALE_CODE_REF`).
 - Strict token ceiling: **800 tokens** maximum, measured on the exact injected text (drops verified commands, RCAs, decisions, dead ends, then the handoff, in that order).
 
-Side caches written at compile time: `cache/last_session.json`, `cache/guard_index.json` (command-keyed fixes/dead ends the hook injects on a command's 2nd failure in one session; Claude Code only, advisory).
+Side caches written at compile time: `cache/last_session.json`, `cache/guard_index.json` (command-keyed fixes/dead ends the hook injects on a command's 2nd failure in one session; all four platforms, advisory; Antigravity defers delivery to the next PreInvocation via `cache/pending_guard.json`).

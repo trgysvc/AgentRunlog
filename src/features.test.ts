@@ -126,3 +126,48 @@ describe('git link', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('repeated-failure guard on every platform (documented output shapes)', () => {
+  const setup = () => {
+    const dir = tmp();
+    const root = join(dir, '.agentrunlog');
+    mkdirSync(join(root, 'cache'), { recursive: true });
+    writeFileSync(join(root, 'cache', 'guard_index.json'), JSON.stringify([{ id: 'RCA-9', kind: 'rca', key: 'npm test', text: '[RCA-9] Known fix: run npm ci' }]));
+    return { dir, root };
+  };
+  const call = (root: string, platform: string, event: string, payload: any) =>
+    runLightHook({ platform, event, payload, payloadParsed: true, storageRoot: root, env: {} });
+
+  it('Cursor: postToolUseFailure -> additional_context (error_message, conversation_id)', () => {
+    const { dir, root } = setup();
+    const pl = { conversation_id: 'c1', hook_event_name: 'postToolUseFailure', tool_name: 'Shell', tool_input: { command: 'npm test' }, error_message: 'boom', failure_type: 'error' };
+    expect(call(root, 'cursor', 'post-tool-use-failure', pl)).toBeNull();
+    const g = call(root, 'cursor', 'post-tool-use-failure', pl);
+    expect(JSON.parse(formatHookOutput('cursor', 'post-tool-use-failure', g)!).additional_context).toMatch(/RCA-9/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('Codex: PostToolUse after a non-zero Bash exit -> hookSpecificOutput.additionalContext', () => {
+    const { dir, root } = setup();
+    const pl = { session_id: 'x1', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { output: 'Process exited with code 1' } };
+    expect(call(root, 'codex', 'post-tool-use', pl)).toBeNull();
+    const g = call(root, 'codex', 'post-tool-use', pl);
+    const out = JSON.parse(formatHookOutput('codex', 'post-tool-use', g)!);
+    expect(out.hookSpecificOutput.hookEventName).toBe('PostToolUse');
+    expect(out.hookSpecificOutput.additionalContext).toMatch(/RCA-9/);
+    // a successful run never counts
+    expect(call(root, 'codex', 'post-tool-use', { ...pl, tool_response: { output: 'ok', exit_code: 0 } })).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('Antigravity: PostToolUse answers {} and the advisory arrives at the next PreInvocation', () => {
+    const { dir, root } = setup();
+    const pl = { conversationId: 'a1', toolCall: { name: 'run_command', args: { CommandLine: 'npm test' } }, error: 'exit status 1' };
+    expect(call(root, 'antigravity', 'post-tool-use', pl)).toBeNull();
+    expect(formatHookOutput('antigravity', 'post-tool-use', call(root, 'antigravity', 'post-tool-use', pl))).toBe('{}');
+    const pre = call(root, 'antigravity', 'pre-invocation', { conversationId: 'a1' });
+    expect(JSON.parse(formatHookOutput('antigravity', 'pre-invocation', pre)!).injectSteps[0].systemMessage.systemMessage).toMatch(/RCA-9/);
+    expect(call(root, 'antigravity', 'pre-invocation', { conversationId: 'a1' })).toBeNull(); // delivered once
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

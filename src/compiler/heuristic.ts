@@ -11,8 +11,10 @@ export function normalizeToolPayload(p: Record<string, any>): Record<string, any
   const out: Record<string, any> = { ...p };
   const input = p.tool_input && typeof p.tool_input === 'object' ? p.tool_input : {};
   const resp = p.tool_response && typeof p.tool_response === 'object' ? p.tool_response : {};
-  if (out.command === undefined) out.command = input.command ?? input.file_path ?? undefined;
-  if (out.tool === undefined) out.tool = p.tool_name;
+  const tc = p.toolCall && typeof p.toolCall === 'object' ? p.toolCall : {};
+  if (out.command === undefined) out.command = input.command ?? tc.args?.CommandLine ?? tc.args?.command ?? input.file_path ?? undefined;
+  if (out.tool === undefined) out.tool = p.tool_name ?? tc.name;
+  if (out.error === undefined && typeof p.error_message === 'string' && p.error_message) out.error = p.error_message; // Cursor postToolUseFailure
   if (out.exitCode === undefined) out.exitCode = resp.exit_code ?? resp.exitCode ?? resp.returncode;
   if (out.error === undefined) {
     if (typeof resp.error === 'string' && resp.error) out.error = resp.error;
