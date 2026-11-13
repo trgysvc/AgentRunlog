@@ -341,9 +341,17 @@ describe('Compiler & Linter Engine', () => {
       join(mockClaudeDir, 'sess-claude-99.jsonl'),
       JSON.stringify({
         type: 'user',
+        cwd: tempDir,
         timestamp: '2026-11-10T11:00:00Z',
         message: { content: 'SonarAura audio engine decision: use WebAudio API' },
       }),
+      'utf8'
+    );
+    // A different project's session that merely mentions this project must NOT be imported
+    mkdirSync(join(tempDir, 'mock_claude_proj', '-other'), { recursive: true });
+    writeFileSync(
+      join(tempDir, 'mock_claude_proj', '-other', 'sess-other-1.jsonl'),
+      JSON.stringify({ type: 'user', cwd: '/some/other/project', timestamp: '2026-11-10T11:30:00Z', message: { content: `SonarAura SonarAura SonarAura ${tempDir}/x` } }),
       'utf8'
     );
 
@@ -518,5 +526,35 @@ describe('Session journey', () => {
     await new TranscriptExtractor(st).extractAndCompile(f);
     expect(existsSync(join(st.paths.runs, 's1.md'))).toBe(true);
     expect(readFileSync(st.paths.wikiIndex, 'utf8')).toContain('Recent Sessions');
+  });
+});
+
+describe('Claude transcript parsing (real shape)', () => {
+  it('turns tool_result blocks into post_tool_use, keeps user text as prompts', async () => {
+    const { writeFileSync, mkdirSync, readFileSync, readdirSync } = await import('node:fs');
+    const { HistoryImporter } = await import('./history-importer.js');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_cl_'));
+    const st = new StorageManager(dir);
+    const proj = join(dir, 'claude', '-p');
+    mkdirSync(proj, { recursive: true });
+    const L = (o: any) => JSON.stringify({ cwd: dir, timestamp: '2026-11-10T11:00:00Z', ...o });
+    writeFileSync(
+      join(proj, 's.jsonl'),
+      [
+        L({ type: 'user', message: { content: [{ type: 'text', text: 'run the tests please' }] } }),
+        L({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npm test' } }] } }),
+        L({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Exit code 1\nboom', is_error: true }] } }),
+        L({ type: 'assistant', message: { content: [{ type: 'text', text: 'The tests fail because of boom, fixing now.' }] } }),
+      ].join('\n'),
+    );
+    const res = await new HistoryImporter(st, dir).importProjectHistory({
+      antigravityBrainDir: join(dir, 'x1'), claudeProjectsDir: join(dir, 'claude'), codexSessionsDir: join(dir, 'x2'), cursorProjectsDir: join(dir, 'x3'),
+    });
+    expect(res.claudeSessionsImported).toBe(1);
+    const f = readdirSync(st.paths.raw).find((n) => n.includes('import_claude'))!;
+    const evs = readFileSync(join(st.paths.raw, f), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(evs.map((e) => e.eventType)).toEqual(['prompt_submit', 'post_tool_use', 'agent_response']);
+    expect(evs[1].payload.tool_input.command).toBe('npm test');
+    expect(evs[1].payload.tool_response.is_error).toBe(true);
   });
 });

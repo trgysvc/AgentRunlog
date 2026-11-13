@@ -43,7 +43,9 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
     const p = normalizeToolPayload(e.payload || {});
     if (e.eventType === 'prompt_submit') {
       const t = String(p.text || p.prompt || p.rawText || '').trim();
-      if (t) requests.push({ turn, text: t });
+      // Harness-injected messages (task notifications, reminders, context summaries) are not the user's words.
+      const injected = /^<(task-notification|system-reminder|command-|local-command|user-prompt-submit-hook)/.test(t) || /^This session is being continued/.test(t);
+      if (t && !injected) requests.push({ turn, text: t });
     } else if (e.eventType === 'agent_response') {
       const t = String(p.text || p.message || p.response || p.last_assistant_message || '').trim();
       if (t) lastResponse = t;

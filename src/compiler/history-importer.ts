@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { IMPORT_VERSION } from './import-version.js';
 import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
@@ -205,7 +205,7 @@ export class HistoryImporter {
               continue;
             }
 
-            const events = this.parseClaudeTranscript(fullPath, file.replace('.jsonl', ''), matchTerms, aliases);
+            const events = this.parseClaudeTranscript(fullPath, file.replace('.jsonl', ''), projDir);
             if (events.length > 0) {
               const sessionId = `import_claude_${file.replace('.jsonl', '').slice(0, 8)}`;
               const written = this.writeImportedSession(sessionId, events);
@@ -216,6 +216,8 @@ export class HistoryImporter {
                 state.files[fullPath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: sessionId };
               }
             } else {
+              // Not (or no longer) this project's: drop OUR earlier copy, if any (never the original).
+              this.removeOwnImportedSession(`import_claude_${file.replace('.jsonl', '').slice(0, 8)}`);
               state.files[fullPath] = { mtimeMs: check.mtimeMs, size: check.size, importedSessionId: '' };
             }
           }
@@ -472,56 +474,101 @@ export class HistoryImporter {
     }
   }
 
-  private parseClaudeTranscript(
-    filePath: string,
-    sessionId: string,
-    matchTerms: string[],
-    aliases: string[]
-  ): RawSessionEvent[] {
-    try {
-      const raw = readFileSync(filePath, 'utf8');
-      if (!this.matchesProjectDeterministic(raw, matchTerms, aliases)) return [];
+  /** Claude Code stores each project's sessions under ~/.claude/projects/<cwd with / and . replaced by ->. */
+  /** Removes AgentRunlog's own derived copies of a wrongly imported session. Platform stores are never touched. */
+  private removeOwnImportedSession(sessionId?: string): void {
+    if (!sessionId || !/^import_[A-Za-z0-9_]+$/.test(sessionId)) return;
+    for (const f of [join(this.storage.paths.raw, `session-${sessionId}.jsonl`), join(this.storage.paths.runs, `${sessionId}.md`)]) {
+      try {
+        if (existsSync(f)) unlinkSync(f);
+      } catch {}
+    }
+  }
 
+  private encodeClaudeProjectDir(root: string): string {
+    return root.replace(/[^A-Za-z0-9]/g, '-');
+  }
+
+  /** Is this Claude transcript this project's? Decided by its own `cwd` metadata, never by mentions. */
+  private claudeTranscriptBelongsHere(filePath: string, projDirName: string): boolean {
+    if (projDirName === this.encodeClaudeProjectDir(this.projectRoot)) return true;
+    try {
+      const fd = openSync(filePath, 'r');
+      try {
+        const buf = Buffer.alloc(256 * 1024);
+        const n = readSync(fd, buf, 0, buf.length, 0);
+        const head = buf.toString('utf8', 0, n);
+        const m = head.match(/"cwd":"((?:[^"\\]|\\.)*)"/);
+        if (!m) return false;
+        const cwd = JSON.parse(`"${m[1]}"`) as string;
+        return cwd === this.projectRoot || cwd.startsWith(this.projectRoot + '/');
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  private blockText(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content
+      .map((b: any) => (typeof b === 'string' ? b : b && b.type === 'text' && typeof b.text === 'string' ? b.text : ''))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  private parseClaudeTranscript(filePath: string, sessionId: string, projDirName: string): RawSessionEvent[] {
+    try {
+      if (!this.claudeTranscriptBelongsHere(filePath, projDirName)) return [];
+      const raw = readFileSync(filePath, 'utf8');
       const lines = raw.split('\n').filter((l) => l.trim().length > 0);
       const events: RawSessionEvent[] = [];
+      const toolUses = new Map<string, { name: string; input: unknown }>();
+      const ev = (eventType: RawSessionEvent['eventType'], timestamp: string, payload: Record<string, unknown>) =>
+        events.push({ sessionId, platform: 'claude_code', eventType, timestamp, payload });
 
       for (const line of lines) {
         try {
           const entry = JSON.parse(line);
           const timestamp = entry.timestamp || new Date().toISOString();
+          const content = entry.message?.content;
+          if (!content || entry.isMeta) continue;
 
-          if (entry.type === 'user' && entry.message?.content) {
-            const content =
-              typeof entry.message.content === 'string'
-                ? entry.message.content
-                : JSON.stringify(entry.message.content);
-            if (content.length > 0) {
-              events.push({
-                sessionId,
-                platform: 'claude_code',
-                eventType: 'prompt_submit',
-                timestamp,
-                payload: { text: content },
-              });
+          if (entry.type === 'user') {
+            if (typeof content === 'string') {
+              if (content.length > 0) ev('prompt_submit', timestamp, { text: content });
+              continue;
             }
-          } else if (entry.type === 'assistant' && entry.message?.content) {
-            const content =
-              typeof entry.message.content === 'string'
-                ? entry.message.content
-                : JSON.stringify(entry.message.content);
-            if (content.length > 20) {
-              events.push({
-                sessionId,
-                platform: 'claude_code',
-                eventType: 'agent_response',
-                timestamp,
-                payload: { text: content },
-              });
+            if (!Array.isArray(content)) continue;
+            // tool results are tool output, not something the user said
+            for (const b of content) {
+              if (b && b.type === 'tool_result') {
+                const use = toolUses.get(b.tool_use_id);
+                ev('post_tool_use', timestamp, {
+                  tool_name: use?.name ?? 'unknown',
+                  tool_input: use?.input ?? {},
+                  tool_response: { content: this.blockText(b.content), is_error: b.is_error === true },
+                });
+              }
             }
+            const text = this.blockText(content.filter((b: any) => b && b.type === 'text'));
+            if (text.trim().length > 0) ev('prompt_submit', timestamp, { text });
+          } else if (entry.type === 'assistant') {
+            if (typeof content === 'string') {
+              if (content.length > 20) ev('agent_response', timestamp, { text: content });
+              continue;
+            }
+            if (!Array.isArray(content)) continue;
+            for (const b of content) {
+              if (b && b.type === 'tool_use' && b.id) toolUses.set(b.id, { name: String(b.name ?? ''), input: b.input ?? {} });
+            }
+            const text = this.blockText(content.filter((b: any) => b && b.type === 'text'));
+            if (text.trim().length > 0) ev('agent_response', timestamp, { text });
           }
         } catch {}
       }
-
       return events;
     } catch {
       return [];
