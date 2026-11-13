@@ -37,6 +37,15 @@ export function defaultCliCommand(): string {
   return `"${process.execPath}" "${entry}"`;
 }
 
+/** MCP server entry (node + full CLI bundle) for project-level `.mcp.json`. */
+export function defaultMcpEntry(): { command: string; args: string[] } {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const root = findPackageRoot(here);
+  const full = resolve(root, 'bundle/agentrunlog.mjs');
+  const entry = existsSync(full) ? full : resolve(root, 'dist/cli/index.js');
+  return { command: process.execPath, args: [entry, 'mcp'] };
+}
+
 export function isAgentRunlogEntry(entry: unknown): boolean {
   const s = JSON.stringify(entry);
   return s.includes('agentrunlog') || s.includes('runlog hook') || / hook (claude|codex|cursor|antigravity) /.test(s);

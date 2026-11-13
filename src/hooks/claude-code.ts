@@ -1,6 +1,7 @@
 import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand, mergeNestedHooks, nestedHookGroup } from './manifest.js';
+import { defaultCliCommand, defaultMcpEntry, mergeNestedHooks, nestedHookGroup } from './manifest.js';
 
 export interface ClaudeCodeHookConfig {
   sessionStartCommand: string;
@@ -48,7 +49,32 @@ export class ClaudeCodeHookAdapter {
   public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
     const settingsPath = join(projectRoot, '.claude', 'settings.json');
     mergeNestedHooks(settingsPath, this.commands(cliBinPath));
+    this.installMcp(projectRoot);
     return settingsPath;
+  }
+
+  /** Registers the MCP server in the project's `.mcp.json` (merged; other servers untouched). */
+  public installMcp(projectRoot: string = process.cwd()): string {
+    const file = join(projectRoot, '.mcp.json');
+    let cfg: any = {};
+    try {
+      if (existsSync(file)) cfg = JSON.parse(readFileSync(file, 'utf8')) || {};
+    } catch {
+      return file; // never overwrite a file we cannot parse
+    }
+    cfg.mcpServers = { ...(cfg.mcpServers || {}), agentrunlog: defaultMcpEntry() };
+    writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
+    // Pre-approve the project server so the user never has to confirm anything by hand.
+    try {
+      const sp = join(projectRoot, '.claude', 'settings.json');
+      const st = existsSync(sp) ? JSON.parse(readFileSync(sp, 'utf8')) : {};
+      const enabled: string[] = Array.isArray(st.enabledMcpjsonServers) ? st.enabledMcpjsonServers : [];
+      if (!enabled.includes('agentrunlog')) {
+        st.enabledMcpjsonServers = [...enabled, 'agentrunlog'];
+        writeFileSync(sp, JSON.stringify(st, null, 2) + '\n', 'utf8');
+      }
+    } catch {}
+    return file;
   }
 
   /**

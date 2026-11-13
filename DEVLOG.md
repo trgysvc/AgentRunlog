@@ -361,3 +361,5 @@
 - NFR-03: `config.privacy.enabled` / `excludePatterns` (glob) ve `runlog pause|resume` ile kayıt kapatma/hariç tutma.
 - Doctor: proje seviyesindeki Claude kurulumunu (`.claude/settings.json`, `.mcp.json`) da tanır.
 - NFR-05 p95: hook paketi 9KB; kalan fark Node başlangıcı (22ms) — kod tarafında kazanç yok, sapma olarak kalır.
+- `init claude` artık proje `.mcp.json` yazar ve `enabledMcpjsonServers` ile önceden onaylar (taze projede MCP yoktu; gerçek Claude testinde bulundu).
+- Gerçek Claude testleri: --resume (aynı oturuma eklenir), 3 eşzamanlı oturum (bozulma yok), /compact (pre_compact yakalandı), alt ajan, redaksiyon (password=...), MCP record_decision/get_active_context.
