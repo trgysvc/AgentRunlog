@@ -109,6 +109,8 @@ The linter runs **automatically after every compile/reindex** (result in `cache/
 - Flags broken `supersedes` links, superseded decisions still marked active, low-confidence active decisions, and dead ends without retry conditions.
 - **Optional, off by default — LLM decision-conflict review.** Detecting a *semantic* contradiction between two active decisions needs a model. AgentRunlog never calls one itself, so this uses your coding agent's own model and **spends your tokens**. Enable it explicitly with `runlog llm-review enable` (shows the cost warning and asks for confirmation; `--yes` to confirm non-interactively); `runlog llm-review disable` turns it off, `status` shows the state. When on, the compiler deterministically picks up to 2 pairs of active decisions that touch the same module (~150–250 extra tokens per session) and the push asks your agent to compare them, ask you which one stands, and report via the `review_decision_conflict` MCP tool (the loser becomes `superseded`; "compatible" pairs are never asked again). The tool refuses to act while the feature is disabled.
 
+**Known limitation / planned improvement:** candidates are currently chosen only by a shared `affectsModules` entry, so two decisions with no module set are never compared. A future version may also pick candidates by title/keyword similarity. That would catch more contradictions but would also raise false alarms and **increase token spending** (more pairs to review per session), so it will stay behind the same opt-in and consent.
+
 ### 5. Handoff, Guardrail & Verification (no model, no SessionEnd dependency)
 
 - **Last session handoff** and **verified commands** are pushed at session start (within the 800-token ceiling).
@@ -221,6 +223,7 @@ runlog reindex   # Wipe wiki and rebuild from scratch from raw/ transcripts (NFR
 - [x] **Capture Adapters**: Hook adapters for Claude Code, Google Antigravity, Cursor (own `.cursor/rules/agentrunlog.mdc`, never overwrites `.cursorrules`), and Codex CLI.
 - [x] **Handoff, verified commands, claim check, code sync, git link, repeated-failure guard** on all four platforms (see section 5).
 - [x] **Impact report, disk usage, pause/resume, exclude patterns, automatic history sync.**
+- [ ] Planned: broader conflict-candidate selection (title/keyword similarity) for the LLM review — more coverage, but more false alarms and higher token cost; will stay opt-in.
 - [x] Automatic lint after every compile; opt-in (default off, token-cost consent) LLM decision-conflict review via the working agent.
 - [ ] Real-app verification of Cursor, Codex and Antigravity hooks (verified through the shipped hook with simulated payloads and the official docs; Claude Code verified end to end).
 - [x] **Codebase Bootstrap Scanner**: Automatic project scan on `runlog init` / `runlog scan` for existing in-progress repos.

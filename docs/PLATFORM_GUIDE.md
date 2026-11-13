@@ -37,6 +37,8 @@ runlog scan --force   # re-import every past conversation
 ### Optional: LLM decision-conflict review (off by default)
 Works the same on all four platforms because it rides on the normal push + MCP. Enabling it (`runlog llm-review enable`) means your agent's model spends extra tokens each session; you confirm this once. Details in the README.
 
+Limitation: only decisions sharing a module (`affectsModules`) are compared; decisions without modules are never reviewed. Broader candidate selection (e.g. title similarity) is planned and would raise token spending and false alarms; it will stay opt-in.
+
 ### Privacy controls
 `.agentrunlog/config.json` → `privacy.enabled: false` (record nothing) and `privacy.excludePatterns` (globs matched against paths and commands). `runlog pause` is the quick toggle. Your platforms' original conversation stores are only ever read, never modified.
 

@@ -114,3 +114,4 @@ Side caches written at compile time: `cache/last_session.json`, `cache/guard_ind
 ## Addendum: auto-lint and opt-in conflict review
 - Every compile/reindex writes `cache/lint.json` (counts + first 20 issues).
 - `config.json` `llmReview {enabled=false, consentAt}`: when enabled, `active_context.json` may carry `conflictReview` (≤2 pairs of active decisions sharing `affectsModules`); `review_decision_conflict` (MCP) records the verdict; reviewed pairs live in `cache/reviewed_pairs.json`. AgentRunlog itself never calls a model.
+- Limitation: candidate selection uses only shared `affectsModules`. Broader selection (title/keyword similarity) is planned; it will increase review coverage, false alarms and token cost, and stays behind the opt-in.

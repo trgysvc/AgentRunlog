@@ -394,3 +394,4 @@ Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Curs
 - Lint her compile/reindex sonrası otomatik çalışır (`cache/lint.json`).
 - Çelişki kontrolü varsayılan KAPALI; `runlog llm-review enable` token maliyeti uyarısı + onay ister. AgentRunlog model çağırmaz: aday çiftleri belirler, çalışan ajan push üzerinden karşılaştırır ve `review_decision_conflict` MCP aracıyla bildirir. Kapalıyken araç reddeder.
 - Testler: 76/76.
+- Not: çelişki adayları şimdilik yalnızca ortak `affectsModules` ile seçilir; modülsüz kararlar karşılaştırılmaz. İleride başlık/anahtar kelime benzerliği eklenebilir (daha çok kapsam, ama daha fazla yanlış alarm ve token maliyeti; opt-in kalacak).
