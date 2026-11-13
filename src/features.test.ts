@@ -164,7 +164,7 @@ describe('repeated-failure guard on every platform (documented output shapes)', 
     const { dir, root } = setup();
     const pl = { conversationId: 'a1', toolCall: { name: 'run_command', args: { CommandLine: 'npm test' } }, error: 'exit status 1' };
     expect(call(root, 'antigravity', 'post-tool-use', pl)).toBeNull();
-    expect(formatHookOutput('antigravity', 'post-tool-use', call(root, 'antigravity', 'post-tool-use', pl))).toBe('{}');
+    expect(formatHookOutput('antigravity', 'post-tool-use', call(root, 'antigravity', 'post-tool-use', { ...pl, stepIdx: 2 }))).toBe('{}');
     const pre = call(root, 'antigravity', 'pre-invocation', { conversationId: 'a1' });
     expect(JSON.parse(formatHookOutput('antigravity', 'pre-invocation', pre)!).injectSteps[0].systemMessage.systemMessage).toMatch(/RCA-9/);
     expect(call(root, 'antigravity', 'pre-invocation', { conversationId: 'a1' })).toBeNull(); // delivered once
@@ -236,5 +236,27 @@ describe('open-work detection: failures resolved by another route', () => {
       ev(2, 'Bash', { command: 'npm test', exitCode: 0 }),
     ])!;
     expect(a.open.size).toBe(1);
+  });
+});
+
+describe('duplicate hooks and unknown-command imports', () => {
+  it('ignores a failure whose command text is unknown (history import placeholder)', async () => {
+    const { analyzeSession } = await import('./compiler/journey.js');
+    const a = analyzeSession([
+      { sessionId: 'import_x', platform: 'antigravity', timestamp: '2026-01-01T00:00:01Z', eventType: 'post_tool_use', payload: { tool: 'terminal_command', unknownCommand: true, exitCode: 1, error: 'Command exited with code 1' } } as any,
+    ])!;
+    expect(a.open.size).toBe(0);
+  });
+  it('records an event once when the same hook fires twice', async () => {
+    const { runLightHook } = await import('./hooks/light.js');
+    const { mkdtempSync, readFileSync, readdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = join(mkdtempSync(join(tmpdir(), 'dup-')), '.agentrunlog');
+    const input = { platform: 'antigravity', event: 'post-tool-use', storageRoot: root, payload: { conversationId: 'c1', toolCall: { name: 'read_file', args: {} }, stepIdx: 4 }, payloadParsed: true } as any;
+    runLightHook(input);
+    expect(runLightHook(input)).toBeNull();
+    const f = readdirSync(join(root, 'raw')).find((x) => x.startsWith('session-'))!;
+    expect(readFileSync(join(root, 'raw', f), 'utf8').trim().split('\n')).toHaveLength(1);
   });
 });

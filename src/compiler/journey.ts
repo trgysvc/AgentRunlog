@@ -105,7 +105,7 @@ export function analyzeSession(events: RawSessionEvent[]): SessionAnalysis | nul
         commands.push({ turn, cmd, failed });
         if (failed) {
           const err = String(p.error || `exit code ${p.exitCode}`);
-          if (!isNonStructuralFailure(err) && !open.has(cmd)) open.set(cmd, { error: err, turn, edited: new Set() });
+          if (!p.unknownCommand && !isNonStructuralFailure(err) && !open.has(cmd)) open.set(cmd, { error: err, turn, edited: new Set() });
         } else {
           if (open.has(cmd)) {
             const o = open.get(cmd)!;

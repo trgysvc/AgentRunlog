@@ -449,7 +449,8 @@ export class HistoryImporter {
                 eventType: 'post_tool_use',
                 timestamp,
                 payload: {
-                  command: 'terminal_command',
+                  tool: 'terminal_command',
+                  unknownCommand: true, // transcripts do not carry the command text
                   exitCode: Number(exitMatch[1]),
                   error: content,
                 },

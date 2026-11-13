@@ -406,3 +406,8 @@ Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Curs
 - `analyzeSession`: başarısız komut, aynı türden (test/build/lint/typecheck) sonraki başarılı çalıştırmayla veya başarısız bir yerinde-düzenleme komutu (`sed -i`, `perl -pi`) sonradan başka yolla (edit aracı, python yazımı) düzeltilince "açık" sayılmaz. Handoff'taki "OPEN: sed … still failing" yanlış alarmı giderildi.
 - Kural bilinçli olarak muhafazakâr: ilgisiz komut hataları açık kalır (test eklendi).
 - `docs/PLATFORM_GUIDE.md`: Antigravity için sıfırdan kurulum adımları eklendi.
+
+## Faz 18 — Antigravity gerçek oturum bulguları (Linux, IDE)
+- Canlı yakalama doğrulandı: `session_start`, `prompt_submit`, `post_tool_use`, `agent_response` yazıldı; MCP araçları çağrıldı.
+- Bulgu 1: her hook olayı iki kez geliyor (global eklenti + proje `.agents/hooks.json`, ~40 ms arayla). Düzeltme: Antigravity'de 0,5 sn içinde aynı olay+payload ikinci kez kaydedilmez, enjekte edilmez, sayılmaz.
+- Bulgu 2: geçmiş içe aktarımı komut metni olmayan başarısız adımları `terminal_command` adıyla kaydediyordu; hepsi tek anahtara toplanıp "OPEN: terminal_command still failing" ve sahte dead-end üretiyordu. Düzeltme: `unknownCommand` işareti; açık iş ve dead-end takibi bu olayları atlar. Not: önceden üretilmiş sahte DEAD-* kayıtları yeni derlemede yeniden üretilmez, elle silinebilir.

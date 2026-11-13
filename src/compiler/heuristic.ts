@@ -99,7 +99,7 @@ export function heuristicExtract(events: RawSessionEvent[]): ExtractedBundle {
     }
 
     // 2. Detect failed tool calls & repeated dead-end failures
-    if (e.eventType === 'post_tool_use' && (payload.error || (payload.exitCode !== undefined && payload.exitCode !== 0))) {
+    if (e.eventType === 'post_tool_use' && !payload.unknownCommand && (payload.error || (payload.exitCode !== undefined && payload.exitCode !== 0))) {
       const cmdKey = String(payload.command || payload.tool || 'Tool');
       const errMsg = String(payload.error || `Exit code ${payload.exitCode}`);
       const structural = !isNonStructuralFailure(errMsg);

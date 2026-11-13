@@ -202,6 +202,7 @@ export function runLightHook(input: LightHookInput): string | null {
   let sessionId = input.sessionId || (idFromPayload ? String(idFromPayload) : '');
   if (!sessionId && input.payloadParsed) sessionId = `sess_${new Date().toISOString().slice(0, 10)}`;
 
+  let duplicate = false;
   if (mapped && sessionId && !optedOut && !excluded) {
     try {
       mkdirSync(rawDir, { recursive: true });
@@ -215,11 +216,17 @@ export function runLightHook(input: LightHookInput): string | null {
           payload: defaultSanitizer.redactObject(payload),
         }) + '\n';
       const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
-      appendFileSync(join(rawDir, `session-${safeId}.jsonl`), line, 'utf8');
+      const rawFile = join(rawDir, `session-${safeId}.jsonl`);
+      if (platform === 'antigravity' && isDuplicateEvent(rawFile, mapped, line)) duplicate = true;
+      else appendFileSync(rawFile, line, 'utf8');
     } catch {
       // Capture failure must never block the agent.
     }
   }
+
+  // Antigravity: the same hook registered twice (global plugin + project .agents/hooks.json) fires every event twice:
+  // the second copy records, injects and counts nothing.
+  if (duplicate) return null;
 
   // 1b. Repeated-failure guardrail: on the 2nd failure of the same command in a session, surface the known fix / dead end.
   let guard: string | null = null;
@@ -283,6 +290,27 @@ export function runLightHook(input: LightHookInput): string | null {
     spawnWorker(input.cliPath, 'compile', env, projectDir);
   }
   return push;
+}
+
+/** True when an identical event (same type + payload) was appended to this session file within the last 0.5 s. */
+function isDuplicateEvent(file: string, eventType: string | null, line: string): boolean {
+  try {
+    if (!existsSync(file)) return false;
+    const now = JSON.parse(line);
+    const fd = readFileSync(file, 'utf8');
+    const tail = fd.slice(-16384).split('\n').filter(Boolean).slice(-6);
+    const payload = JSON.stringify(now.payload);
+    return tail.some((l) => {
+      try {
+        const e = JSON.parse(l);
+        return e.eventType === eventType && JSON.stringify(e.payload) === payload && Math.abs(Date.parse(now.timestamp) - Date.parse(e.timestamp)) < 500;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
 }
 
 /**
