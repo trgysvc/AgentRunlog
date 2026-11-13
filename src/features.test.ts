@@ -209,3 +209,32 @@ describe('auto lint + opt-in LLM conflict review', () => {
     expect(() => applyReviewVerdict(st, 'A', 'B', 'compatible')).toThrow(/disabled/);
   });
 });
+
+describe('open-work detection: failures resolved by another route', () => {
+  const ev = (i: number, tool: string, p: Record<string, unknown>) =>
+    ({ sessionId: 'live_1', platform: 'claude', timestamp: `2026-01-01T00:00:0${i}Z`, eventType: 'post_tool_use', payload: { tool, ...p } }) as any;
+  it('closes a failed sed -i once the file is rewritten another way', async () => {
+    const { analyzeSession } = await import('./compiler/journey.js');
+    const a = analyzeSession([
+      ev(1, 'Bash', { command: "sed -i 's/a/b/' x.ts", error: 'sed: bad' }),
+      ev(2, 'Bash', { command: "python3 - <<'EOF'\nopen('x.ts','w').write('b')\nEOF", exitCode: 0 }),
+    ])!;
+    expect(a.open.size).toBe(0);
+  });
+  it('closes a failed test run after a later passing test run with a different command', async () => {
+    const { analyzeSession } = await import('./compiler/journey.js');
+    const a = analyzeSession([
+      ev(1, 'Bash', { command: 'npm test -- a', exitCode: 1 }),
+      ev(2, 'Bash', { command: 'npm test', exitCode: 0 }),
+    ])!;
+    expect(a.open.size).toBe(0);
+  });
+  it('keeps an unrelated failure open', async () => {
+    const { analyzeSession } = await import('./compiler/journey.js');
+    const a = analyzeSession([
+      ev(1, 'Bash', { command: 'node deploy.js', exitCode: 2 }),
+      ev(2, 'Bash', { command: 'npm test', exitCode: 0 }),
+    ])!;
+    expect(a.open.size).toBe(1);
+  });
+});

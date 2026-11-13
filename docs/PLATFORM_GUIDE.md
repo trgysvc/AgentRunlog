@@ -97,6 +97,15 @@ Limitation: only decisions sharing a module (`affectsModules`) are compared; dec
 
 **Setup:** `runlog init antigravity` writes the `agentrunlog` group into `.agents/hooks.json`; the global install creates the plugin under `~/.gemini/config/plugins/agentrunlog/` with MCP, hooks, `rules/AGENTS.md` and a skill. `/hooks` in the TUI lists active hooks.
 
+**Installing on a fresh machine (step by step)**
+1. Requirements: Node.js 20+, git, and Antigravity installed and started at least once (so `~/.gemini/` exists).
+2. `npm install -g git+https://github.com/trgysvc/AgentRunlog.git` (postinstall runs the setup for all platforms). If the global install is not wanted: clone the repo, `npm install && npm test` (this builds `bundle/`), then `node bundle/agentrunlog.mjs setup`.
+3. `runlog doctor`: the Antigravity line must be ✅ (plugin, hooks, MCP handshake with all 9 tools). If it is ❌, run `runlog install-plugin antigravity` and check again.
+4. In your project: `runlog init antigravity` (project-level `.agents/hooks.json`, first scan).
+5. **Fully restart Antigravity**, open the project, and run `/hooks` in the TUI: the `agentrunlog` group must be listed. Check the MCP list for `agentrunlog`.
+6. Work for a few prompts, then run `runlog report` (or look at `.agentrunlog/raw/`) to confirm events are being captured. After 25 turns, or at the next session start, the wiki compiles on its own.
+7. If something does not fire, send the output of `runlog doctor`, `.agentrunlog/raw/` file names and the Antigravity version; that is the information needed for the test report.
+
 **Hooks used:** `SessionStart`, `PreInvocation`, `PostInvocation`, `PostToolUse`, `Stop`. `PreToolUse` is deliberately not registered: it must return a permission decision and AgentRunlog never gates tools.
 
 **Push:** `SessionStart` → `injectSteps` system message.

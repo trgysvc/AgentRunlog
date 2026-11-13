@@ -57,6 +57,10 @@ export interface SessionAnalysis {
   unverifiedClaims: RunKind[];
 }
 
+const IN_PLACE_EDIT = /\b(sed\s+(-[a-zA-Z]*i|--in-place)|perl\s+-[a-zA-Z]*i)\b/;
+
+const FILE_WRITE = /\.write\(|write_text|open\([^)]*['"]w['"]/;
+
 export function analyzeSession(events: RawSessionEvent[]): SessionAnalysis | null {
   if (events.length === 0) return null;
   const sessionId = events[0].sessionId;
@@ -102,10 +106,23 @@ export function analyzeSession(events: RawSessionEvent[]): SessionAnalysis | nul
         if (failed) {
           const err = String(p.error || `exit code ${p.exitCode}`);
           if (!isNonStructuralFailure(err) && !open.has(cmd)) open.set(cmd, { error: err, turn, edited: new Set() });
-        } else if (open.has(cmd)) {
-          const o = open.get(cmd)!;
-          fixes.push({ cmd, error: o.error, failTurn: o.turn, fixTurn: turn, edited: [...o.edited] });
-          open.delete(cmd);
+        } else {
+          if (open.has(cmd)) {
+            const o = open.get(cmd)!;
+            fixes.push({ cmd, error: o.error, failTurn: o.turn, fixTurn: turn, edited: [...o.edited] });
+            open.delete(cmd);
+          }
+          // Resolved by another route: a later passing run of the same kind (test/build/lint/typecheck),
+          // or a failed in-place edit command (sed -i, perl -pi) whose target was then edited with an edit tool.
+          const kind = runKind(cmd);
+          for (const [oc, o] of [...open]) {
+            const sameKind = kind !== null && runKind(oc) === kind;
+            const editRetried = IN_PLACE_EDIT.test(oc) && (o.edited.size > 0 || FILE_WRITE.test(cmd) || IN_PLACE_EDIT.test(cmd));
+            if (sameKind || editRetried) {
+              fixes.push({ cmd: oc, error: o.error, failTurn: o.turn, fixTurn: turn, edited: [...o.edited] });
+              open.delete(oc);
+            }
+          }
         }
       }
     }

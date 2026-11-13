@@ -401,3 +401,8 @@ Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Curs
 - Doctor: CLI Runtime ve MCP el sıkışması aynı girişi kullanır; proje `.mcp.json`'ında çözülmemiş `${VAR}` varsa Claude MCP "kurulu" sayılmaz (önceden yanıltıcı ✅ veriyordu).
 - Ders: doctor'ın ✅'si ile Claude'un gerçekten MCP'yi yüklemesi aynı şey değil; kayıt `~/.claude.json`'da yoktu.
 - Testler: 77/77.
+
+## Faz 17 — Açık iş tespiti: başka yoldan çözülen hatalar
+- `analyzeSession`: başarısız komut, aynı türden (test/build/lint/typecheck) sonraki başarılı çalıştırmayla veya başarısız bir yerinde-düzenleme komutu (`sed -i`, `perl -pi`) sonradan başka yolla (edit aracı, python yazımı) düzeltilince "açık" sayılmaz. Handoff'taki "OPEN: sed … still failing" yanlış alarmı giderildi.
+- Kural bilinçli olarak muhafazakâr: ilgisiz komut hataları açık kalır (test eklendi).
+- `docs/PLATFORM_GUIDE.md`: Antigravity için sıfırdan kurulum adımları eklendi.
