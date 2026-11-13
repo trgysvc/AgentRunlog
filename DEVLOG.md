@@ -345,3 +345,12 @@
 2. **Reindex açık kararları taslağa düşürüyordu:** `record_decision` kayıtlarında transkript konumu yok (`live_<ms>` oturum kimliği) ve FR-06 bunları `draft` yapıp push'tan çıkarıyordu. Açıkça MCP ile yazılan kayıtlar artık güvenilir sayılır. Test eklendi.
 3. **Sezgisel karar çıkarımı canlı oturumda `active` üretiyordu:** "karar" gibi sözcük içeren herhangi bir komut metni push'a girebiliyordu. Anahtar sözcükle tahmin edilen kararlar artık her zaman `draft`/`low`; açık kararlar `record_decision` ile gelir.
 - 58/58 test.
+
+## Faz 13 — ek 3 (PRD denetimi)
+- RCA yalnızca çözülmüş (yapısal hata → sonra başarı) olduğunda üretilir; çözümde arada düzenlenen dosyalar listelenir.
+- Journey: Read artık komut olarak gösterilmez.
+- Claude `Stop` hook'u kaydedildi (asistan yanıtı → agent_response).
+- Run kayıtları: test/build/lint komutları `RUN-*` olarak yazılır, index.md'de "Recent Runs" tablosu.
+- Güvenlik açığı düzeltildi: tırnaksız `password=değer` redakte edilmiyordu (ENV_SECRET deseni ön ek zorunluydu). Test eklendi.
+- Denetim sonuçları: hook gecikmesi p95 ≈ 34ms (hedef 20ms; Node başlangıcı tek başına 22ms), p99 ≈ 35ms (hedef 50ms geçer).
+- Bilinen sapma: wiki tamamen silinirse yalnızca MCP ile yazılmış kayıtlar raw'dan türetilemez (reindex yalnızca hook olaylarını yeniden kurar).

@@ -159,10 +159,31 @@ export class WikiManager {
    * Generates wiki/index.md and module-based context pages wiki/modules/*.md (FR-08)
    */
   /** "Recent Sessions" index lines from wiki/runs/*.md (newest first, max 15). */
+  /** Test/build/lint Run records (FR-04/FR-05), newest first. */
+  private recentRunRecordsSection(): string[] {
+    try {
+      const rows: { id: string; command: string; exitCode: number; summary: string; createdAt: string }[] = [];
+      for (const f of readdirSync(this.paths.runs).filter((x) => x.startsWith('RUN-') && x.endsWith('.md'))) {
+        const res = RunSchema.safeParse(matter(readFileSync(join(this.paths.runs, f), 'utf8')).data);
+        if (res.success) rows.push(res.data);
+      }
+      if (rows.length === 0) return [];
+      rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return [
+        '\n## Recent Runs (tests / builds)',
+        '| ID | Command | Exit | Result |',
+        '| :--- | :--- | :--- | :--- |',
+        ...rows.slice(0, 15).map((r) => `| [${r.id}](runs/${r.id}.md) | \`${r.command.replace(/\|/g, '/').slice(0, 60)}\` | ${r.exitCode} | ${r.summary.replace(/\|/g, '/')} |`),
+      ];
+    } catch {
+      return [];
+    }
+  }
+
   private recentRunsSection(): string[] {
     try {
       const files = readdirSync(this.paths.runs)
-        .filter((f) => f.endsWith('.md'))
+        .filter((f) => f.endsWith('.md') && !f.startsWith('RUN-'))
         .map((f) => ({ f, t: statSync(join(this.paths.runs, f)).mtimeMs }))
         .sort((a, b) => b.t - a.t)
         .slice(0, 15);
@@ -272,6 +293,7 @@ export class WikiManager {
           ]
         : []),
       ...this.recentRunsSection(),
+      ...this.recentRunRecordsSection(),
       '\n## Known Dead Ends (Soft Guardrail)',
       '| ID | Title | Why Failed | Retry Conditions |',
       '| :--- | :--- | :--- | :--- |',

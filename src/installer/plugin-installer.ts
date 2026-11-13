@@ -208,6 +208,7 @@ export class UniversalPluginInstaller {
       PostToolUse: this.getHookCommand('claude', 'post-tool-use'),
       PostToolUseFailure: this.getHookCommand('claude', 'post-tool-use-failure'),
       PreCompact: this.getHookCommand('claude', 'pre-compact'),
+      Stop: this.getHookCommand('claude', 'stop'),
       SessionEnd: this.getHookCommand('claude', 'session-end'),
     };
 

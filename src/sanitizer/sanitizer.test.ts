@@ -70,3 +70,12 @@ describe('Sanitizer extra secret shapes', () => {
     expect(out).toContain('DATABASE_PASSWORD=[REDACTED');
   });
 });
+
+import { describe as d2, it as i2, expect as e2 } from 'vitest';
+import { Sanitizer as S2 } from './index.js';
+d2('bare key=value secrets', () => {
+  i2('redacts unquoted password=value', () => {
+    const out = new S2().redactText('use password=hunter2hunter2 now');
+    e2(out).not.toContain('hunter2hunter2');
+  });
+});

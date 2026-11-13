@@ -8,6 +8,8 @@ import {
   DeadEndSchema,
   type Task,
   TaskSchema,
+  type Run,
+  RunSchema,
   type RawSessionEvent,
 } from '../types/schemas.js';
 import { type StorageManager } from '../storage/index.js';
@@ -24,6 +26,7 @@ export interface ExtractedBundle {
   rcas: RCA[];
   deadEnds: DeadEnd[];
   tasks: Task[];
+  runs?: Run[];
 }
 
 export interface CompilerOptions {}
@@ -133,6 +136,12 @@ export class TranscriptExtractor {
       if (parsed.success) {
         this.storage.wiki.saveTask(parsed.data);
       }
+    }
+
+    // 4b. Save Runs (test/build/lint results, FR-04/FR-05)
+    for (const run of bundle.runs || []) {
+      const parsed = RunSchema.safeParse(run);
+      if (parsed.success) this.storage.wiki.saveRun(parsed.data);
     }
 
     // 5. Generate wiki/index.md and wiki/modules/*.md (FR-08)

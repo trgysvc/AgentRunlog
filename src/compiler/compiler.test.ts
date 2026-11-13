@@ -167,6 +167,20 @@ describe('Compiler & Linter Engine', () => {
         payload: { command: 'npm run build', exitCode: 1, error: 'TS2304 error' },
       },
     ]);
+    // an unresolved failure is not a "known fix"
+    expect(fallback.rcas.length).toBe(0);
+    const ts = new Date().toISOString();
+    const resolved = heuristicExtract([
+      ...([
+        { eventType: 'prompt_submit', payload: { text: 'Fix broken build script' } },
+        { eventType: 'post_tool_use', payload: { command: 'npm run build', exitCode: 1, error: 'TS2304 error' } },
+        { eventType: 'post_tool_use', payload: { tool_name: 'Edit', tool_input: { file_path: 'src/a.ts' }, tool_response: {} } },
+        { eventType: 'post_tool_use', payload: { command: 'npm run build', exitCode: 0 } },
+      ] as any[]).map((e) => ({ sessionId: 'sess_fallback', platform: 'claude_code', timestamp: ts, ...e })),
+    ]);
+    expect(resolved.rcas.length).toBe(1);
+    expect(resolved.rcas[0].resolution).toContain('src/a.ts');
+    Object.assign(fallback, { rcas: resolved.rcas });
 
     expect(fallback.tasks.length).toBe(1);
     expect(fallback.rcas.length).toBe(1);
@@ -578,5 +592,20 @@ describe('Reindex keeps explicit MCP records active', () => {
     expect(after.status).toBe('active');
     const ctx = JSON.parse(readFileSync(join(dir, '.agentrunlog', 'cache', 'active_context.json'), 'utf8'));
     expect(ctx.activeDecisions.map((d: any) => d.id)).toContain(rec.id);
+  });
+});
+
+describe('Run records (FR-04/FR-05)', () => {
+  it('test and build commands become Run records with exit code, summary and evidence', async () => {
+    const { heuristicExtract } = await import('./heuristic.js');
+    const ts = new Date().toISOString();
+    const b = heuristicExtract([
+      { sessionId: 's1', platform: 'claude_code', timestamp: ts, eventType: 'post_tool_use', payload: { tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: 'Test Files 3 passed\n Tests  58 passed (58)' } } },
+      { sessionId: 's1', platform: 'claude_code', timestamp: ts, eventType: 'post_tool_use', payload: { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: { stdout: 'x' } } },
+    ] as any);
+    expect(b.runs!.length).toBe(1);
+    expect(b.runs![0].exitCode).toBe(0);
+    expect(b.runs![0].summary).toContain('58 passed');
+    expect(b.runs![0].evidence.hash).toBeTruthy();
   });
 });

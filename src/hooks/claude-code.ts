@@ -24,6 +24,7 @@ export class ClaudeCodeHookAdapter {
       PreToolUse: `${cli} hook claude pre-tool-use`,
       PostToolUse: `${cli} hook claude post-tool-use`,
       PostToolUseFailure: `${cli} hook claude post-tool-use-failure`,
+      Stop: `${cli} hook claude stop`,
       SessionEnd: `${cli} hook claude session-end`,
       PreCompact: `${cli} hook claude pre-compact`,
     };

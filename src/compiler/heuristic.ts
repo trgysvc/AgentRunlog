@@ -34,17 +34,21 @@ function deterministicShortId(seed: string): string {
  * - Single tool crashes -> RCAs (FR-04)
  * - Initial session prompt -> Tasks (FR-02)
  */
+const RUN_COMMAND = /\b(npm (run )?(test|build|lint)|pnpm (run )?(test|build|lint)|yarn (test|build|lint)|vitest|jest|pytest|go (test|build|vet)|cargo (test|build|check|clippy)|tsc\b|make( |$)|mvn |gradle|eslint|ruff)\b/i;
+
 export function heuristicExtract(events: RawSessionEvent[]): ExtractedBundle {
   const bundle: ExtractedBundle = {
     decisions: [],
     rcas: [],
     deadEnds: [],
     tasks: [],
+    runs: [],
   };
 
   if (events.length === 0) return bundle;
   const sessionId = events[0].sessionId;
   const isHistoricalImport = sessionId.startsWith('import_') || events.some((e) => e.payload?.imported === true);
+  const pendingFixes = new Map<string, { index: number; errMsg: string; timestamp: string; edited: Set<string> }>();
   const failureCounts = new Map<string, { count: number; lastError: string; timestamp: string; turnIndex: number }>();
 
   const decisionSignalRegex =
@@ -105,20 +109,56 @@ export function heuristicExtract(events: RawSessionEvent[]): ExtractedBundle {
       prev.turnIndex = i + 1;
       if (structural) failureCounts.set(cmdKey, prev);
 
-      if (prev.count === 1 && structural) {
-        bundle.rcas.push({
-          id: `RCA-${deterministicShortId(`${sessionId}:rca:${i}`)}`,
-          title: `Command Failed: ${cmdKey}`,
-          incident: errMsg,
-          rootCause: 'Command returned non-zero exit code during execution',
-          resolution: 'Investigate error output and fix failing command arguments',
-          preventativeActions: ['Check syntax and dependencies before execution'],
-          affectsFiles: [],
-          evidence: ev(i, e.timestamp),
-          confidence: isHistoricalImport ? 'low' : 'medium',
-          createdAt: e.timestamp,
-        });
+      if (prev.count === 1 && structural) pendingFixes.set(cmdKey, { index: i, errMsg, timestamp: e.timestamp, edited: new Set() });
+    }
+
+    // 2b. A failure only becomes an RCA once it is observed to be resolved: the same command succeeds later.
+    //     Unresolved failures stay in the session journey; they are not pushed as "known fixes".
+    if (e.eventType === 'post_tool_use') {
+      const failedNow = Boolean(payload.error) || (payload.exitCode !== undefined && payload.exitCode !== 0);
+      const key = String(payload.command || payload.tool || 'Tool');
+      if (!failedNow) {
+        if (/^(edit|write|multiedit|notebookedit|str_replace)/i.test(String(payload.tool || ''))) {
+          const f = String(payload.command || '');
+          if (f) for (const pf of pendingFixes.values()) pf.edited.add(f);
+        }
+        const pf = pendingFixes.get(key);
+        if (pf) {
+          pendingFixes.delete(key);
+          const files = [...pf.edited];
+          bundle.rcas.push({
+            id: `RCA-${deterministicShortId(`${sessionId}:rca:${pf.index}`)}`,
+            title: `Command Failed: ${key}`.slice(0, 120),
+            incident: pf.errMsg,
+            rootCause: 'Command returned a non-zero exit code',
+            resolution: files.length
+              ? `Resolved: the same command succeeded after editing ${files.slice(0, 5).join(', ')}`
+              : 'Resolved: the same command succeeded on a later run without file edits (environment or arguments)',
+            preventativeActions: [],
+            affectsFiles: files.slice(0, 10),
+            evidence: ev(pf.index, pf.timestamp),
+            confidence: isHistoricalImport ? 'low' : 'medium',
+            createdAt: pf.timestamp,
+          });
+        }
       }
+    }
+
+    // 2c. Test / build / lint runs are Run records (FR-04, FR-05): command, exit code and a one-line result.
+    if (e.eventType === 'post_tool_use' && RUN_COMMAND.test(String(payload.command || '')) && /^(bash|shell|run|exec)/i.test(String(payload.tool || 'bash'))) {
+      const failed = Boolean(payload.error) || (payload.exitCode !== undefined && payload.exitCode !== 0);
+      const code = typeof payload.exitCode === 'number' ? payload.exitCode : failed ? 1 : 0;
+      const out = String(payload.error || payload.stdout || payload.tool_response?.stdout || payload.tool_response?.content || '');
+      const lines = out.split('\n').map((l) => l.trim()).filter(Boolean);
+      const key = lines.reverse().find((l) => /pass|fail|error|tests?|ok\b|built|success|✓|✗|×/i.test(l)) || lines[0] || (failed ? 'failed' : 'ok');
+      bundle.runs!.push({
+        id: `RUN-${deterministicShortId(`${sessionId}:run:${i}`)}`,
+        command: String(payload.command).slice(0, 300),
+        exitCode: code,
+        summary: key.slice(0, 300),
+        evidence: ev(i, e.timestamp),
+        createdAt: e.timestamp,
+      });
     }
 
     // 3. Detect task descriptions from initial prompt

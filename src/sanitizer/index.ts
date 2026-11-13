@@ -117,7 +117,7 @@ export const DEFAULT_RULES: SanitizerRule[] = [
   // 14. Shell/.env style assignments: DATABASE_PASSWORD=..., AWS_SECRET_ACCESS_KEY=..., export FOO_TOKEN=...
   {
     name: 'ENV_SECRET',
-    pattern: /\b([A-Za-z][A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIALS?)[A-Za-z0-9_]*)=(?!\[REDACTED:)(?!["'])([^\s]{6,})/gi,
+    pattern: /\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIALS?)[A-Za-z0-9_]*)=(?!\[REDACTED:)(?!["'])([^\s]{6,})/gi,
     maskGenerator: (m) => {
       const eq = m.indexOf('=');
       return `${m.slice(0, eq + 1)}${createSecretMask('SECRET', m.slice(eq + 1))}`;

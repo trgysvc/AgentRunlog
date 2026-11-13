@@ -59,7 +59,7 @@ export function buildSessionJourney(events: RawSessionEvent[]): string | null {
           for (const o of open.values()) o.edited.add(f);
         }
       }
-      if (/^(bash|shell|run|exec)/i.test(tool) || (p.command && !isEdit)) {
+      if (/^(bash|shell|run|exec)/i.test(tool) || (p.tool_input?.command && !isEdit) || (p.command && !p.tool_input && !isEdit)) {
         const cmd = String(p.command || tool);
         const failed = Boolean(p.error) || (p.exitCode !== undefined && p.exitCode !== 0);
         commands.push({ turn, cmd, failed });
