@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -372,7 +373,9 @@ export function createRunlogMcpServer(storageManager?: StorageManager): {
 }
 
 // Start stdio server if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// (Only for the standalone dist/mcp/server.js entry: inside the CLI bundle import.meta.url equals argv[1] too,
+// which would start a second server on the same stdio and run every tool call twice.)
+if (/[\\/]mcp[\\/]server\.js$/.test(process.argv[1] || '') && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { server } = createRunlogMcpServer();
   const transport = new StdioServerTransport();
   server.connect(transport).catch((err) => {

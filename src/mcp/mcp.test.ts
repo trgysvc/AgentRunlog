@@ -172,3 +172,25 @@ describe('MCP record ids and input hygiene (R9)', () => {
     expect(a.choice).not.toContain('supersecret99');
   });
 });
+
+describe('MCP bundle runs one server per process', () => {
+  it('a tool call over stdio produces exactly one response and one record', async () => {
+    const { spawn } = await import('node:child_process');
+    const { mkdtempSync, writeFileSync, readdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join, resolve } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_mcp1_'));
+    writeFileSync(join(dir, 'package.json'), '{"name":"x"}');
+    const p = spawn('node', [resolve('bundle/agentrunlog.mjs'), 'mcp'], { cwd: dir, stdio: ['pipe', 'pipe', 'ignore'] });
+    let out = '';
+    p.stdout.on('data', (d) => (out += d));
+    const send = (o: object) => p.stdin.write(JSON.stringify(o) + '\n');
+    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
+    send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'record_decision', arguments: { title: 'once', context: 'c', choice: 'x' } } });
+    await new Promise((r) => setTimeout(r, 2500));
+    p.kill();
+    expect(out.split('\n').filter((l) => l.includes('"id":2')).length).toBe(1);
+    expect(readdirSync(join(dir, '.agentrunlog', 'wiki', 'decisions')).filter((f) => f.startsWith('DEC-')).length).toBe(1);
+  }, 20000);
+});

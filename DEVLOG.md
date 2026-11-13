@@ -339,3 +339,9 @@
 
 ### Faz 13 ek: Gerçek Claude testi tekrarı
 - Gerçek `claude -p` oturumunda başarısız Bash komutu kaydedilmedi: Claude Code başarısız araç çağrıları için `PostToolUse` değil `PostToolUseFailure` gönderiyor. Hook `post-tool-use-failure` olarak eklendi (`claude-code.ts`, installer, `hooks/hooks.json`); `post_tool_use` olarak eşlenir, oturum yolunda ❌ görünür. Yeniden testte olay `error: Exit code 1…` ile kaydedildi. 56/56 test.
+
+### Faz 13 ek 2: Gerçek Claude testinde bulunan üç hata
+1. **MCP çift sunucu:** `server.ts` içindeki "doğrudan çalıştırılırsa başlat" koşulu bundle içinde de doğru çıkıyordu; aynı stdio'da ikinci sunucu açılıp her araç çağrısı iki kez çalışıyordu (her `record_decision` iki kayıt). Koşul yalnızca bağımsız `mcp/server.js` girişi için geçerli. Test: bundle üzerinden tek çağrı = tek yanıt, tek kayıt.
+2. **Reindex açık kararları taslağa düşürüyordu:** `record_decision` kayıtlarında transkript konumu yok (`live_<ms>` oturum kimliği) ve FR-06 bunları `draft` yapıp push'tan çıkarıyordu. Açıkça MCP ile yazılan kayıtlar artık güvenilir sayılır. Test eklendi.
+3. **Sezgisel karar çıkarımı canlı oturumda `active` üretiyordu:** "karar" gibi sözcük içeren herhangi bir komut metni push'a girebiliyordu. Anahtar sözcükle tahmin edilen kararlar artık her zaman `draft`/`low`; açık kararlar `record_decision` ile gelir.
+- 58/58 test.

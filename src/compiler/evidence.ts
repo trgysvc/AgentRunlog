@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto';
 import { type Evidence } from '../types/schemas.js';
 
 /** FR-06: a transcript-backed record needs sessionId + turnIndex + line + hash. */
+/**
+ * Records written explicitly through MCP (`record_decision` / `record_dead_end`) carry a `live_<ms>` session id and
+ * no transcript position: the agent or user stated them on purpose, so they are trusted as-is. Anything else needs
+ * a complete pointer into the raw transcript (FR-06).
+ */
 export function hasCompleteEvidence(ev: Partial<Evidence> | undefined): boolean {
+  if (ev && typeof ev.sessionId === 'string' && /^live_\d+$/.test(ev.sessionId)) return true;
   return !!ev && !!ev.sessionId && typeof ev.turnIndex === 'number' && typeof ev.line === 'number' && !!ev.hash;
 }
 

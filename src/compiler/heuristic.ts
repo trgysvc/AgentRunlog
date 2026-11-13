@@ -77,8 +77,8 @@ export function heuristicExtract(events: RawSessionEvent[]): ExtractedBundle {
       bundle.decisions.push({
         id: `DEC-${deterministicShortId(`${sessionId}:dec:${i}`)}`,
         title: cleanSingleLine.slice(0, 65),
-        status: isHistoricalImport ? 'draft' : 'active',
-        decidedBy: isHistoricalImport ? 'historical-candidate' : 'user',
+        status: 'draft', // keyword guess, never trusted: explicit decisions come through record_decision
+        decidedBy: 'heuristic-candidate',
         author: 'user',
         context: `User directive captured during session ${sessionId}`,
         choice: cleanSingleLine.slice(0, 280),
@@ -86,7 +86,7 @@ export function heuristicExtract(events: RawSessionEvent[]): ExtractedBundle {
         supersededBy: null,
         affectsModules: [],
         evidence: ev(i, e.timestamp),
-        confidence: isHistoricalImport ? 'low' : 'medium',
+        confidence: 'low',
         createdAt: e.timestamp,
         updatedAt: e.timestamp,
       });

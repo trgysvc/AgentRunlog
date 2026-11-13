@@ -559,3 +559,24 @@ describe('Claude transcript parsing (real shape)', () => {
     expect(evs[0].payload.imported).toBe(true);
   });
 });
+
+describe('Reindex keeps explicit MCP records active', () => {
+  it('a record_decision survives reindex as active and stays in the push cache', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'runlog_reidx_'));
+    writeFileSync(join(dir, 'package.json'), '{"name":"x"}');
+    const { StorageManager } = await import('../storage/index.js');
+    const { RunlogMcpTools } = await import('../mcp/tools.js');
+    const { WikiReindexer } = await import('./reindex.js');
+    const storage = new StorageManager(dir);
+    const tools: any = new RunlogMcpTools();
+    const rec = tools.recordDecision({ title: 'Keep raw', context: 'c', choice: 'never delete raw', projectRoot: dir });
+    await new WikiReindexer(storage).reindex();
+    const after = storage.wiki.listDecisions().find((d) => d.id === rec.id)!;
+    expect(after.status).toBe('active');
+    const ctx = JSON.parse(readFileSync(join(dir, '.agentrunlog', 'cache', 'active_context.json'), 'utf8'));
+    expect(ctx.activeDecisions.map((d: any) => d.id)).toContain(rec.id);
+  });
+});
