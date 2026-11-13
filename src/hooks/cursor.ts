@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand, isAgentRunlogEntry, readJsonStrict, writeJsonAtomic } from './manifest.js';
+import { defaultCliCommand, globalHooksRegistered, isAgentRunlogEntry, readJsonStrict, writeJsonAtomic } from './manifest.js';
 
 export class CursorHookAdapter {
   private storage: StorageManager;
@@ -25,11 +25,6 @@ export class CursorHookAdapter {
         beforeSubmitPrompt: [
           {
             command: `${cliBinPath} hook cursor before-submit-prompt`,
-          },
-        ],
-        preToolUse: [
-          {
-            command: `${cliBinPath} hook cursor pre-tool-use`,
           },
         ],
         postToolUse: [
@@ -91,7 +86,7 @@ To prevent repeating past mistakes and to preserve architectural decisions:
   /**
    * Installs hooks.json and .cursorrules into the project
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): {
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand(), home?: string): {
     hooksPath: string;
     rulesPath: string;
   } {
@@ -102,7 +97,8 @@ To prevent repeating past mistakes and to preserve architectural decisions:
 
     // Merge into an existing hooks.json: keep the user's own hooks, replace only ours.
     const hooksPath = join(cursorDir, 'hooks.json');
-    const ours = this.generateHookManifest(cliBinPath) as { version: number; hooks: Record<string, Array<{ command: string }>> };
+    const skipHooks = Boolean(home && globalHooksRegistered('cursor', home));
+    const ours = (skipHooks ? { version: 1, hooks: {} } : this.generateHookManifest(cliBinPath)) as { version: number; hooks: Record<string, Array<{ command: string }>> };
     const existing = readJsonStrict(hooksPath) as { version?: number; hooks?: Record<string, Array<{ command?: string }>> };
     const merged: Record<string, unknown[]> = {};
     for (const [event, entries] of Object.entries(existing.hooks ?? {})) {

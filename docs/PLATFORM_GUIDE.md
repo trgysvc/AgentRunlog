@@ -8,11 +8,20 @@ How to use AgentRunlog with each supported coding agent. Everything is determini
 ```bash
 npm install -g git+https://github.com/trgysvc/AgentRunlog.git   # postinstall configures all 4 platforms
 runlog doctor                                                    # checks plugins, hooks and a live MCP handshake
-runlog init [claude|cursor|codex|antigravity]                    # optional: project-level hooks + first scan
+runlog init [claude|cursor|codex|antigravity]                    # optional: first scan (+ project hooks only where the global install has none)
 ```
 Open a project in any agent and start working. On the first hook or MCP call AgentRunlog creates `.agentrunlog/`, adds `raw/` to `.gitignore`, scans the codebase and imports past conversations in the background. You never run anything by hand.
 
 The installer registers the MCP server as `bundle/agentrunlog.mjs` (self-contained, no `node_modules`) and hooks as `bundle/hook.mjs`. If a platform still points at an older `dist/cli/index.js` entry, run `runlog setup` (or `runlog install-plugin <platform>`) again. `runlog doctor` shows which entry is used. Restart the agent after re-installing: running sessions read their MCP list at start.
+
+### Where hooks are registered (one place only)
+Per the current official docs, Claude Code, Cursor and Codex **merge user-level and project-level hooks and run all of them**; Antigravity loads global, workspace and plugin hook files side by side. Registering AgentRunlog in two places therefore fires every event twice. The global install (`runlog setup`) registers the hooks once at user level; `runlog init` writes project hooks **only for platforms that have no user-level AgentRunlog hooks** and removes older project copies otherwise. Re-running the installer is idempotent (it replaces its own entries and keeps yours). Antigravity additionally drops an identical event that arrives twice within 0.5 s.
+
+Hook sets (only events AgentRunlog uses; it never registers permission hooks such as `PreToolUse`, because empty output on a permission hook can block the tool):
+- Claude Code: `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `Stop`, `SessionEnd`.
+- Cursor: `sessionStart`, `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, `preCompact`, `stop`.
+- Codex: `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PreCompact`, `Stop`.
+- Antigravity: `SessionStart`, `PreInvocation`, `PostInvocation`, `PostToolUse`, `Stop`.
 
 ### What happens automatically
 | When | What AgentRunlog does |
@@ -95,14 +104,14 @@ Limitation: only decisions sharing a module (`affectsModules`) are compared; dec
 
 ## 4. Google Antigravity (IDE and CLI)
 
-**Setup:** `runlog init antigravity` writes the `agentrunlog` group into `.agents/hooks.json`; the global install creates the plugin under `~/.gemini/config/plugins/agentrunlog/` with MCP, hooks, `rules/AGENTS.md` and a skill. `/hooks` in the TUI lists active hooks.
+**Setup:** `runlog init antigravity` writes the `agentrunlog` group into `.agents/hooks.json`; the global install creates the plugin under `~/.gemini/config/plugins/agentrunlog/` with MCP, hooks, `rules/AGENTS.md` and a skill. `In the CLI `/hooks` lists active hooks; in the IDE and app use Customizations > Hooks.
 
 **Installing on a fresh machine (step by step)**
 1. Requirements: Node.js 20+, git, and Antigravity installed and started at least once (so `~/.gemini/` exists).
 2. `npm install -g git+https://github.com/trgysvc/AgentRunlog.git` (postinstall runs the setup for all platforms). If the global install is not wanted: clone the repo, `npm install && npm test` (this builds `bundle/`), then `node bundle/agentrunlog.mjs setup`.
 3. `runlog doctor`: the Antigravity line must be ✅ (plugin, hooks, MCP handshake with all 9 tools). If it is ❌, run `runlog install-plugin antigravity` and check again.
 4. In your project: `runlog init antigravity` (project-level `.agents/hooks.json`, first scan).
-5. **Fully restart Antigravity**, open the project, and run `/hooks` in the TUI: the `agentrunlog` group must be listed. Check the MCP list for `agentrunlog`.
+5. **Fully restart Antigravity**, open the project, and check the hooks list (CLI: `/hooks`; IDE/app: Customizations > Hooks): the `agentrunlog` group must be listed once. Check the MCP list for `agentrunlog`.
 6. Work for a few prompts, then run `runlog report` (or look at `.agentrunlog/raw/`) to confirm events are being captured. After 25 turns, or at the next session start, the wiki compiles on its own.
 7. If something does not fire, send the output of `runlog doctor`, `.agentrunlog/raw/` file names and the Antigravity version; that is the information needed for the test report.
 

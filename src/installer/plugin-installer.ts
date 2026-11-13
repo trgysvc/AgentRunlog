@@ -1,5 +1,5 @@
 import { antigravityHookGroup } from '../hooks/antigravity.js';
-import { nestedHookGroup, readJsonStrict } from '../hooks/manifest.js';
+import { isAgentRunlogEntry, nestedHookGroup, readJsonStrict } from '../hooks/manifest.js';
 import {
   existsSync,
   mkdirSync,
@@ -230,8 +230,7 @@ export class UniversalPluginInstaller {
       const existing = Array.isArray(settings.hooks[event]) ? settings.hooks[event] : [];
       // Remove older agentrunlog hooks before re-adding cleanly
       const filtered = existing.filter((entry: any) => {
-        const entryStr = JSON.stringify(entry);
-        return !entryStr.includes('agentrunlog') && !entryStr.includes('runlog hook');
+        return !isAgentRunlogEntry(entry);
       });
       filtered.push({
         matcher: '',
@@ -275,9 +274,10 @@ export class UniversalPluginInstaller {
     hooksData.hooks = hooksData.hooks || {};
 
     const cursorHookMap: Record<string, string> = {
+      sessionStart: this.getHookCommand('cursor', 'session-start'),
       beforeSubmitPrompt: this.getHookCommand('cursor', 'before-submit-prompt'),
-      preToolUse: this.getHookCommand('cursor', 'pre-tool-use'),
       postToolUse: this.getHookCommand('cursor', 'post-tool-use'),
+      postToolUseFailure: this.getHookCommand('cursor', 'post-tool-use-failure'),
       preCompact: this.getHookCommand('cursor', 'pre-compact'),
       stop: this.getHookCommand('cursor', 'stop'),
     };
@@ -285,8 +285,7 @@ export class UniversalPluginInstaller {
     for (const [event, cmd] of Object.entries(cursorHookMap)) {
       const existing = Array.isArray(hooksData.hooks[event]) ? hooksData.hooks[event] : [];
       const filtered = existing.filter((entry: any) => {
-        const entryStr = JSON.stringify(entry);
-        return !entryStr.includes('agentrunlog') && !entryStr.includes('runlog hook');
+        return !isAgentRunlogEntry(entry);
       });
       filtered.push({ command: cmd });
       hooksData.hooks[event] = filtered;
@@ -326,16 +325,15 @@ export class UniversalPluginInstaller {
     const codexHookMap: Record<string, string> = {
       SessionStart: this.getHookCommand('codex', 'session-start'),
       UserPromptSubmit: this.getHookCommand('codex', 'prompt-submit'),
-      PreToolUse: this.getHookCommand('codex', 'pre-tool-use'),
       PostToolUse: this.getHookCommand('codex', 'post-tool-use'),
+      PreCompact: this.getHookCommand('codex', 'pre-compact'),
       Stop: this.getHookCommand('codex', 'stop'),
     };
 
     for (const [event, cmd] of Object.entries(codexHookMap)) {
       const existing = Array.isArray(hooksData.hooks[event]) ? hooksData.hooks[event] : [];
       const filtered = existing.filter((entry: any) => {
-        const entryStr = JSON.stringify(entry);
-        return !entryStr.includes('agentrunlog') && !entryStr.includes('runlog hook');
+        return !isAgentRunlogEntry(entry);
       });
       filtered.push(...nestedHookGroup(cmd));
       hooksData.hooks[event] = filtered;

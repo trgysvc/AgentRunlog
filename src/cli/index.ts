@@ -14,6 +14,7 @@ import { HookManager } from '../hooks/index.js';
 import { formatHookOutput } from '../hooks/light.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
+import { homedir } from 'node:os';
 import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync, statSync, mkdirSync, rmSync } from 'node:fs';
 import { formatBytes, storageUsage } from '../storage/usage.js';
 import { acquireLock } from '../storage/lock.js';
@@ -268,24 +269,26 @@ Usage:
       const rawArg = args[1]?.toLowerCase();
       const platformArg = rawArg && !rawArg.startsWith('--') ? rawArg : undefined;
       if (!platformArg || platformArg === 'all') {
-        hooks.installAll();
+        hooks.installAll(process.cwd(), undefined, homedir());
         console.log('✅ Installed hooks for Claude Code (.claude/settings.json)');
         console.log('✅ Installed hooks for Google Antigravity (.agents/hooks.json)');
         console.log('✅ Installed hooks & rules for Cursor (.cursor/hooks.json & .cursor/rules/agentrunlog.mdc)');
         console.log('✅ Installed hooks for Codex CLI (.codex/hooks.json)');
       } else if (platformArg === 'claude') {
-        hooks.claude.install();
+        hooks.claude.install(process.cwd(), undefined, homedir());
         console.log('✅ Installed Claude Code hook (.claude/settings.json)');
       } else if (platformArg === 'antigravity') {
-        hooks.antigravity.install();
+        hooks.antigravity.install(process.cwd(), undefined, homedir());
         console.log('✅ Installed Google Antigravity hook (.agents/hooks.json)');
       } else if (platformArg === 'cursor') {
-        hooks.cursor.install();
+        hooks.cursor.install(process.cwd(), undefined, homedir());
         console.log('✅ Installed Cursor hooks & rules (.cursor/hooks.json & .cursor/rules/agentrunlog.mdc)');
       } else if (platformArg === 'codex') {
-        hooks.codex.install();
+        hooks.codex.install(process.cwd(), undefined, homedir());
         console.log('✅ Installed Codex CLI hook (.codex/hooks.json)');
       }
+
+      console.log('ℹ️  Platforms whose user-level install already has the AgentRunlog hooks keep none in the project (the agents run user + project hooks together; registering twice would fire every event twice).');
 
       // 3. Ensure .agentrunlog/raw/ is in .gitignore
       const gitignorePath = join(process.cwd(), '.gitignore');

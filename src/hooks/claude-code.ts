@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand, defaultMcpEntry, mergeNestedHooks, nestedHookGroup } from './manifest.js';
+import { defaultCliCommand, defaultMcpEntry, globalHooksRegistered, mergeNestedHooks, nestedHookGroup, removeOurHooks } from './manifest.js';
 
 export interface ClaudeCodeHookConfig {
   sessionStartCommand: string;
@@ -22,7 +22,6 @@ export class ClaudeCodeHookAdapter {
     return {
       SessionStart: `${cli} hook claude session-start`,
       UserPromptSubmit: `${cli} hook claude prompt-submit`,
-      PreToolUse: `${cli} hook claude pre-tool-use`,
       PostToolUse: `${cli} hook claude post-tool-use`,
       PostToolUseFailure: `${cli} hook claude post-tool-use-failure`,
       Stop: `${cli} hook claude stop`,
@@ -46,9 +45,11 @@ export class ClaudeCodeHookAdapter {
    * Installs hooks into <project>/.claude/settings.json (the file Claude Code actually reads),
    * merging with whatever the user already has.
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand(), home?: string): string {
     const settingsPath = join(projectRoot, '.claude', 'settings.json');
-    mergeNestedHooks(settingsPath, this.commands(cliBinPath));
+    // `home` given = real install: skip project hooks when the user-level install already has them (no double firing).
+    if (home && globalHooksRegistered('claude', home)) removeOurHooks(settingsPath, 'claude');
+    else mergeNestedHooks(settingsPath, this.commands(cliBinPath));
     this.installMcp(projectRoot);
     return settingsPath;
   }

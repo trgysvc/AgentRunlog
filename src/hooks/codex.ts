@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand, mergeNestedHooks, nestedHookGroup } from './manifest.js';
+import { defaultCliCommand, globalHooksRegistered, mergeNestedHooks, nestedHookGroup, removeOurHooks } from './manifest.js';
 
 export class CodexHookAdapter {
   private storage: StorageManager;
@@ -13,8 +13,8 @@ export class CodexHookAdapter {
     return {
       SessionStart: `${cli} hook codex session-start`,
       UserPromptSubmit: `${cli} hook codex prompt-submit`,
-      PreToolUse: `${cli} hook codex pre-tool-use`,
       PostToolUse: `${cli} hook codex post-tool-use`,
+      PreCompact: `${cli} hook codex pre-compact`,
       Stop: `${cli} hook codex stop`,
     };
   }
@@ -33,9 +33,10 @@ export class CodexHookAdapter {
   /**
    * Installs hooks into <project>/.codex/hooks.json, merging with existing hooks.
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand(), home?: string): string {
     const manifestPath = join(projectRoot, '.codex', 'hooks.json');
-    mergeNestedHooks(manifestPath, this.commands(cliBinPath));
+    if (home && globalHooksRegistered('codex', home)) removeOurHooks(manifestPath, 'codex');
+    else mergeNestedHooks(manifestPath, this.commands(cliBinPath));
     return manifestPath;
   }
 

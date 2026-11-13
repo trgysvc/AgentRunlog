@@ -411,3 +411,13 @@ Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Curs
 - Canlı yakalama doğrulandı: `session_start`, `prompt_submit`, `post_tool_use`, `agent_response` yazıldı; MCP araçları çağrıldı.
 - Bulgu 1: her hook olayı iki kez geliyor (global eklenti + proje `.agents/hooks.json`, ~40 ms arayla). Düzeltme: Antigravity'de 0,5 sn içinde aynı olay+payload ikinci kez kaydedilmez, enjekte edilmez, sayılmaz.
 - Bulgu 2: geçmiş içe aktarımı komut metni olmayan başarısız adımları `terminal_command` adıyla kaydediyordu; hepsi tek anahtara toplanıp "OPEN: terminal_command still failing" ve sahte dead-end üretiyordu. Düzeltme: `unknownCommand` işareti; açık iş ve dead-end takibi bu olayları atlar. Not: önceden üretilmiş sahte DEAD-* kayıtları yeni derlemede yeniden üretilmez, elle silinebilir.
+
+## Faz 19 — Dört platformun güncel resmi belgelerine göre hook denetimi
+Kaynaklar (2026-11-13 okundu): code.claude.com/docs/en/hooks, cursor.com/docs/agent/hooks, learn.chatgpt.com/docs/hooks (Codex), antigravity.google/docs/hooks.
+- Claude/Cursor/Codex: kullanıcı + proje hook'ları birleşir ve hepsi çalışır (Claude yalnızca aynı handler'ı tek kez çalıştırır; Cursor/Codex dedup belgelenmemiş). Antigravity: birleştirme belgelenmemiş, gerçek testte ikisi de çalıştı (olay iki kez geldi).
+- Hata 1: global kurucu eski kayıtları büyük/küçük harfe duyarlı filtreyle ayıklıyordu (`agentrunlog`); yol `AgentRunlog` içerince eşleşmiyor, her kurulumda kopya birikiyordu (bu makinede 3 kopya). Ortak `isAgentRunlogEntry` kullanılıyor.
+- Hata 2: `init` proje hook'u yazıyordu, global kurulum da yazıyordu → çift tetikleme. Artık global varsa proje kopyası yazılmaz/silinir.
+- Hata 3: Cursor global kurulumu `sessionStart` ve `postToolUseFailure` kaydetmiyordu (push ve tekrar-hata koruması global kurulumda çalışmazdı). Eklendi.
+- Hata 4: Cursor `preToolUse` izin hook'u: belgeye göre geçersiz/boş çıktı eylemi engelleyebilir; hiçbir şey tüketmiyordu. Tüm platformlardan `PreToolUse` kaldırıldı.
+- Codex: `PreCompact` eklendi (derleme tetikleyicisi). Anahtar `[features] hooks = true` belgeyle uyumlu.
+- Testler: kurulum idempotentliği, Cursor/Codex hook kümeleri, init'in global varken proje kopyasını silmesi.

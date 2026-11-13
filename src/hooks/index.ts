@@ -31,13 +31,14 @@ export class HookManager {
    */
   public installAll(
     projectRoot: string = process.cwd(),
-    cliBinPath?: string
+    cliBinPath?: string,
+    home?: string
   ): Record<string, string | { hooksPath: string; rulesPath: string }> {
     return {
-      claude: this.claude.install(projectRoot, cliBinPath),
-      antigravity: this.antigravity.install(projectRoot, cliBinPath),
-      cursor: this.cursor.install(projectRoot, cliBinPath),
-      codex: this.codex.install(projectRoot, cliBinPath),
+      claude: this.claude.install(projectRoot, cliBinPath, home),
+      antigravity: this.antigravity.install(projectRoot, cliBinPath, home),
+      cursor: this.cursor.install(projectRoot, cliBinPath, home),
+      codex: this.codex.install(projectRoot, cliBinPath, home),
     };
   }
 }

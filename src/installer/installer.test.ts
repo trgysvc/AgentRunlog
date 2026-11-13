@@ -110,3 +110,54 @@ describe('MCP entry selection', () => {
     expect(readFileSync(join(home, '.codex', 'config.toml'), 'utf8')).toContain(bundle);
   });
 });
+
+describe('hook registration never duplicates (checked against the platform docs)', () => {
+  let home: string;
+  let proj: string;
+  beforeEach(() => {
+    const base = join(tmpdir(), `agentrunlog_dup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+    home = join(base, 'home');
+    proj = join(base, 'proj');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(proj, { recursive: true });
+  });
+  afterEach(() => rmSync(join(home, '..'), { recursive: true, force: true }));
+
+  const count = (file: string, re: RegExp) => (readFileSync(file, 'utf8').match(re) || []).length;
+
+  it('re-running the global install does not pile up copies (path contains capital letters)', () => {
+    const inst = new UniversalPluginInstaller({ homeDir: home, pkgRoot: resolve(process.cwd()) });
+    inst.installAll();
+    inst.installAll();
+    inst.installAll();
+    const claude = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
+    for (const g of Object.values<any>(claude.hooks)) expect(g).toHaveLength(1);
+    const cursor = JSON.parse(readFileSync(join(home, '.cursor', 'hooks.json'), 'utf8'));
+    for (const g of Object.values<any>(cursor.hooks)) expect(g).toHaveLength(1);
+    const codex = JSON.parse(readFileSync(join(home, '.codex', 'hooks.json'), 'utf8'));
+    for (const g of Object.values<any>(codex.hooks)) expect(g).toHaveLength(1);
+  });
+
+  it('Cursor/Codex global hooks match what the platforms document and what the guard needs', () => {
+    new UniversalPluginInstaller({ homeDir: home, pkgRoot: resolve(process.cwd()) }).installAll();
+    const cursor = JSON.parse(readFileSync(join(home, '.cursor', 'hooks.json'), 'utf8')).hooks;
+    expect(Object.keys(cursor).sort()).toEqual(['beforeSubmitPrompt', 'postToolUse', 'postToolUseFailure', 'preCompact', 'sessionStart', 'stop']);
+    expect(cursor.preToolUse).toBeUndefined(); // permission hook: empty output could block the tool
+    const codex = JSON.parse(readFileSync(join(home, '.codex', 'hooks.json'), 'utf8')).hooks;
+    expect(Object.keys(codex).sort()).toEqual(['PostToolUse', 'PreCompact', 'SessionStart', 'Stop', 'UserPromptSubmit']);
+  });
+
+  it('project init skips hooks the global install already provides, and removes older project copies', async () => {
+    const { HookManager } = await import('../hooks/index.js');
+    const { StorageManager } = await import('../storage/index.js');
+    new UniversalPluginInstaller({ homeDir: home, pkgRoot: resolve(process.cwd()) }).installAll();
+    const hm = new HookManager(new StorageManager(proj));
+    hm.installAll(proj); // no home -> project hooks written
+    expect(existsSync(join(proj, '.agents', 'hooks.json'))).toBe(true);
+    hm.installAll(proj, undefined, home); // home given -> project copies removed
+    expect(count(join(proj, '.agents', 'hooks.json'), /agentrunlog/g)).toBe(0);
+    expect(count(join(proj, '.cursor', 'hooks.json'), /hook cursor/g)).toBe(0);
+    expect(count(join(proj, '.codex', 'hooks.json'), /hook codex/g)).toBe(0);
+    expect(count(join(proj, '.claude', 'settings.json'), /hook claude/g)).toBe(0);
+  });
+});

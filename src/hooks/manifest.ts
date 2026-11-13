@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -88,4 +89,61 @@ export function mergeNestedHooks(path: string, commandsByEvent: Record<string, s
     data.hooks[event] = [...existing.filter((e: unknown) => !isAgentRunlogEntry(e)), ...nestedHookGroup(command)];
   }
   writeJsonAtomic(path, data);
+}
+
+export type HookPlatform = 'claude' | 'antigravity' | 'cursor' | 'codex';
+
+/** Where the user-level (global) AgentRunlog hooks of a platform live. */
+export function globalHookFiles(platform: HookPlatform, home: string = homedir()): string[] {
+  switch (platform) {
+    case 'claude':
+      return [join(home, '.claude', 'settings.json')];
+    case 'cursor':
+      return [join(home, '.cursor', 'hooks.json')];
+    case 'codex':
+      return [join(home, '.codex', 'hooks.json')];
+    case 'antigravity':
+      return [join(home, '.gemini', 'config', 'plugins', 'agentrunlog', 'hooks.json'), join(home, '.gemini', 'config', 'hooks.json')];
+  }
+}
+
+/**
+ * True when the user-level install already registers our hooks. The agents merge user-level and
+ * project-level hooks and run both, so registering again in the project would fire every event twice.
+ */
+export function globalHooksRegistered(platform: HookPlatform, home: string = homedir()): boolean {
+  return globalHookFiles(platform, home).some((f) => {
+    try {
+      return existsSync(f) && isAgentRunlogEntry(JSON.parse(readFileSync(f, 'utf8')));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Removes only AgentRunlog's own hook entries from a project hooks file (the user's other hooks stay). */
+export function removeOurHooks(path: string, platform: HookPlatform): boolean {
+  if (!existsSync(path)) return false;
+  const data = readJsonStrict(path);
+  let changed = false;
+  if (platform === 'antigravity') {
+    for (const k of Object.keys(data)) {
+      if (k === 'agentrunlog' || (typeof data[k] === 'object' && isAgentRunlogEntry(data[k]))) {
+        delete data[k];
+        changed = true;
+      }
+    }
+  } else if (data.hooks && typeof data.hooks === 'object') {
+    for (const [event, entries] of Object.entries<any>(data.hooks)) {
+      if (!Array.isArray(entries)) continue;
+      const kept = entries.filter((e) => !isAgentRunlogEntry(e));
+      if (kept.length !== entries.length) {
+        changed = true;
+        if (kept.length) data.hooks[event] = kept;
+        else delete data.hooks[event];
+      }
+    }
+  }
+  if (changed) writeJsonAtomic(path, data);
+  return changed;
 }

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
-import { defaultCliCommand, isAgentRunlogEntry, readJsonStrict, writeJsonAtomic } from './manifest.js';
+import { defaultCliCommand, globalHooksRegistered, isAgentRunlogEntry, readJsonStrict, removeOurHooks, writeJsonAtomic } from './manifest.js';
 
 export const ANTIGRAVITY_GROUP = 'agentrunlog';
 
@@ -38,8 +38,12 @@ export class AntigravityHookAdapter {
   /**
    * Installs into .agents/hooks.json (workspace scope), merging with the user's other hook groups.
    */
-  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand()): string {
+  public install(projectRoot: string = process.cwd(), cliBinPath: string = defaultCliCommand(), home?: string): string {
     const manifestPath = join(projectRoot, '.agents', 'hooks.json');
+    if (home && globalHooksRegistered('antigravity', home)) {
+      removeOurHooks(manifestPath, 'antigravity'); // the global plugin already fires these hooks
+      return manifestPath;
+    }
     const data = readJsonStrict(manifestPath);
     // Drop our group, and the legacy {description, hooks:{...}} shape older versions wrote.
     delete data[ANTIGRAVITY_GROUP];
