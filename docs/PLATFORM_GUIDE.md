@@ -76,7 +76,7 @@ Limitation: only decisions sharing a module (`affectsModules`) are compared; dec
 
 **Setup:** `runlog init cursor` writes `.cursor/hooks.json` and the rule `.cursor/rules/agentrunlog.mdc`. Global: `~/.cursor/hooks.json`, `~/.cursor/mcp.json`, `~/.cursor/rules/agentrunlog.mdc`.
 
-**Hooks used:** `sessionStart`, `beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `preCompact`, `stop`.
+**Hooks used:** `sessionStart`, `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, `preCompact`, `stop`. `preToolUse` is deliberately not registered: per the docs it is a permission hook and an invalid or empty response can block the tool.
 
 **Push:** `sessionStart` returns `additional_context`. Cursor's forum has reports that `sessionStart` context is not always surfaced to the model, so the always-on rule file instructs the agent to call `get_active_context` / `check_dead_ends` over MCP as a fallback.
 
@@ -92,7 +92,7 @@ Limitation: only decisions sharing a module (`affectsModules`) are compared; dec
 
 **Trust step (required once):** Codex skips hooks that are new or changed until you review them. Open `/hooks` in the Codex CLI and trust the AgentRunlog hooks. After an AgentRunlog upgrade that changes the hook command, trust them again.
 
-**Hooks used:** `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`.
+**Hooks used:** `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PreCompact`, `Stop`. `PreToolUse` is not registered (permission hook, AgentRunlog never gates tools).
 
 **Push:** `SessionStart` output.
 
@@ -104,7 +104,7 @@ Limitation: only decisions sharing a module (`affectsModules`) are compared; dec
 
 ## 4. Google Antigravity (IDE and CLI)
 
-**Setup:** `runlog init antigravity` writes the `agentrunlog` group into `.agents/hooks.json`; the global install creates the plugin under `~/.gemini/config/plugins/agentrunlog/` with MCP, hooks, `rules/AGENTS.md` and a skill. `In the CLI `/hooks` lists active hooks; in the IDE and app use Customizations > Hooks.
+**Setup:** `runlog init antigravity` writes the `agentrunlog` group into `.agents/hooks.json`; the global install creates the plugin under `~/.gemini/config/plugins/agentrunlog/` with MCP, hooks, `rules/AGENTS.md` and a skill. In the CLI `/hooks` lists active hooks; in the IDE and app use Customizations > Hooks.
 
 **Installing on a fresh machine (step by step)**
 1. Requirements: Node.js 20+, git, and Antigravity installed and started at least once (so `~/.gemini/` exists).
