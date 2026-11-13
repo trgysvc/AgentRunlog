@@ -410,7 +410,7 @@ describe('Compiler & Linter Engine', () => {
       cursorWorkspaceStorageDir: join(tempDir, 'nonexistent_ws'),
       aliases: ['SonarAura'],
     });
-    expect(res2.skippedUnchanged).toBe(4);
+    expect(res2.skippedUnchanged).toBe(5); // 4 imported + the other project's checked file
     expect(res2.totalEventsImported).toBe(0);
 
     // Verify NFR-08 Staged Trust Gatekeeper: historical heuristic records are marked draft/low
