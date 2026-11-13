@@ -27,7 +27,7 @@ AgentRunlog acts as a non-intrusive context layer across the 4 major coding plat
 
 | Platform | Primary Integration | Injection Mechanism | Capture Event |
 | :--- | :--- | :--- | :--- |
-| **Claude Code** | Native Plugin Hooks (`hooks.json`) | `SessionStart`, `PreToolUse` | `UserPromptSubmit`, `PostToolUse`, `SessionEnd` |
+| **Claude Code** | Native Plugin Hooks (`hooks.json`) | `SessionStart`, `PreToolUse` | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionEnd` |
 | **Google Antigravity** | Agent Hooks & Extensions (`hooks.json`) | `PreInvocation` | `PostInvocation`, `Stop` |
 | **Cursor** | Cursor Hooks (`hooks.json`) & Rules | Rules injection + MCP pull | `afterAgentResponse`, `preCompact`, `stop` |
 | **Codex CLI** | CLI Hooks (`hooks.json`) | `SessionStart` | `PostToolUse`, `Stop` |
@@ -163,6 +163,8 @@ Open **any** project (new or halfway built) in Antigravity, Claude Code, Cursor,
 You **never** need to say *"save this"* or *"update memory"*. Simply talk to your AI agent and code naturally:
 - **Silent Capture & Secret Redaction:** Every prompt, tool run, and error is silently logged to `.agentrunlog/raw/` via hooks, with API keys and passwords stripped before hitting disk.
 - **Autonomous Live Recording:** When you naturally confirm a choice (*"Let's use Drizzle ORM instead of Prisma"*), the plugin rules instruct the agent to silently call `record_decision` in the background.
+- **History matching:** Claude Code transcripts are matched to a project by their recorded `cwd`, so a project never imports another project's conversations. A conversation keeps one record set (live and imported copies share the session id).
+- **Explicit vs. guessed decisions:** decisions saved through `record_decision` are active immediately and survive `reindex`; decisions guessed from prompt keywords are always `draft` and never pushed.
 - **Automatic Session Compilation:** When your session ends (`Stop` / `SessionEnd` / `PreCompact`), the detached background compiler automatically extracts Decisions, RCAs, and repeated-failure Dead Ends into `.agentrunlog/wiki/` and updates `active_context.json`.
 
 ### Step 3: Next Session (Automatic Memory Recall)
