@@ -92,4 +92,21 @@ describe('ensureCodexHooksFeature', () => {
     expect(ensureCodexHooksFeature('[features]\nhooks = false\n')).toBe('[features]\nhooks = false\n'); // user value wins
     expect(ensureCodexHooksFeature('model = "x"\n')).toContain('[features]\nhooks = true');
   });
+
+});
+
+describe('MCP entry selection', () => {
+  it('registers the self-contained bundle (not dist) as the MCP server entry on every platform', () => {
+    const home = join(tmpdir(), `agentrunlog_mcp_${Date.now()}`);
+    mkdirSync(home, { recursive: true });
+    const root = join(home, 'pkg');
+    mkdirSync(join(root, 'bundle'), { recursive: true });
+    writeFileSync(join(root, 'bundle', 'agentrunlog.mjs'), '// stub');
+    writeFileSync(join(root, 'package.json'), '{"name":"agentrunlog"}');
+    const bundle = join(root, 'bundle', 'agentrunlog.mjs');
+    new UniversalPluginInstaller({ homeDir: home, pkgRoot: root }).installAll();
+    expect(JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8')).mcpServers.agentrunlog.args[0]).toBe(bundle);
+    expect(JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')).mcpServers.agentrunlog.args[0]).toBe(bundle);
+    expect(readFileSync(join(home, '.codex', 'config.toml'), 'utf8')).toContain(bundle);
+  });
 });

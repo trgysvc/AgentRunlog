@@ -12,6 +12,8 @@ runlog init [claude|cursor|codex|antigravity]                    # optional: pro
 ```
 Open a project in any agent and start working. On the first hook or MCP call AgentRunlog creates `.agentrunlog/`, adds `raw/` to `.gitignore`, scans the codebase and imports past conversations in the background. You never run anything by hand.
 
+The installer registers the MCP server as `bundle/agentrunlog.mjs` (self-contained, no `node_modules`) and hooks as `bundle/hook.mjs`. If a platform still points at an older `dist/cli/index.js` entry, run `runlog setup` (or `runlog install-plugin <platform>`) again. `runlog doctor` shows which entry is used. Restart the agent after re-installing: running sessions read their MCP list at start.
+
 ### What happens automatically
 | When | What AgentRunlog does |
 |---|---|

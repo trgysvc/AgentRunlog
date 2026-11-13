@@ -169,6 +169,8 @@ AgentRunlog ships as a **Universal Plugin Bundle** (`plugin.json`, `mcp_config.j
 npm install -g git+https://github.com/trgysvc/AgentRunlog.git
 ```
 
+> **Entry points:** hooks run `bundle/hook.mjs` (13 KB, no dependencies, ~30 ms); the MCP server is registered as `bundle/agentrunlog.mjs`, a self-contained single file that needs no `node_modules`. `dist/cli/index.js` is only the `runlog` command's entry. If the bundle is missing the installer falls back to `dist`.
+
 That's it! During global installation, `postinstall` automatically and non-destructively installs and configures **all 4 platforms** (you can also re-run `runlog setup` or `runlog doctor` anytime):
 - 🟣 **Google Antigravity:** Native plugin (`~/.gemini/config/plugins/agentrunlog/`) with MCP, Hooks, `rules/AGENTS.md`, and `SKILL.md`.
 - 🟠 **Claude Code:** Global MCP (`~/.claude.json`), Hooks (`~/.claude/settings.json`), and Skill (`~/.claude/skills/agentrunlog/`).

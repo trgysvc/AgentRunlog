@@ -37,7 +37,8 @@ export class SystemDoctor {
     this.home = homeDir || homedir();
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const pkgRoot = findPackageRoot(__dirname);
-    this.cliEntry = cliEntry || resolve(pkgRoot, 'dist/cli/index.js');
+    const bundled = resolve(pkgRoot, 'bundle/agentrunlog.mjs');
+    this.cliEntry = cliEntry || (existsSync(bundled) ? bundled : resolve(pkgRoot, 'dist/cli/index.js'));
     this.nodeExec = nodeExec || process.execPath;
   }
 

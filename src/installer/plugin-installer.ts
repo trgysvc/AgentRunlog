@@ -83,6 +83,12 @@ export class UniversalPluginInstaller {
     return this.explicitCli || !existsSync(light) ? this.cliEntry : light;
   }
 
+  /** MCP server entry: the self-contained bundle (no node_modules needed) unless a CLI entry was injected. */
+  private mcpEntry(): string {
+    const full = resolve(this.pkgRoot, 'bundle/agentrunlog.mjs');
+    return this.explicitCli || !existsSync(full) ? this.cliEntry : full;
+  }
+
   private getHookCommand(platform: string, event: string): string {
     return `"${this.nodeExec}" "${this.hookEntry()}" hook ${platform} ${event}`;
   }
@@ -136,7 +142,7 @@ export class UniversalPluginInstaller {
           mcpServers: {
             agentrunlog: {
               command: this.nodeExec,
-              args: [this.cliEntry, 'mcp'],
+              args: [this.mcpEntry(), 'mcp'],
             },
           },
         },
@@ -199,7 +205,7 @@ export class UniversalPluginInstaller {
     claudeJson.mcpServers.agentrunlog = {
       type: 'stdio',
       command: this.nodeExec,
-      args: [this.cliEntry, 'mcp'],
+      args: [this.mcpEntry(), 'mcp'],
     };
     writeFileSync(claudeJsonPath, JSON.stringify(claudeJson, null, 2), 'utf8');
     writtenPaths.push(claudeJsonPath);
@@ -256,7 +262,7 @@ export class UniversalPluginInstaller {
     mcpData.mcpServers = mcpData.mcpServers || {};
     mcpData.mcpServers.agentrunlog = {
       command: this.nodeExec,
-      args: [this.cliEntry, 'mcp'],
+      args: [this.mcpEntry(), 'mcp'],
     };
     writeFileSync(mcpPath, JSON.stringify(mcpData, null, 2), 'utf8');
     writtenPaths.push(mcpPath);
@@ -352,7 +358,7 @@ export class UniversalPluginInstaller {
       '# BEGIN AGENTRUNLOG MANAGED',
       '[mcp_servers.agentrunlog]',
       `command = "${this.nodeExec.replace(/\\/g, '\\\\')}"`,
-      `args = ["${this.cliEntry.replace(/\\/g, '\\\\')}", "mcp"]`,
+      `args = ["${this.mcpEntry().replace(/\\/g, '\\\\')}", "mcp"]`,
       '# END AGENTRUNLOG MANAGED',
       '',
     ].join('\n');

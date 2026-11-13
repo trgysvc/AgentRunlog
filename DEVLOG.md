@@ -395,3 +395,9 @@ Testler: 74/74; paketlenmiş hook ile 3 platform elle doğrulandı. Gerçek Curs
 - Çelişki kontrolü varsayılan KAPALI; `runlog llm-review enable` token maliyeti uyarısı + onay ister. AgentRunlog model çağırmaz: aday çiftleri belirler, çalışan ajan push üzerinden karşılaştırır ve `review_decision_conflict` MCP aracıyla bildirir. Kapalıyken araç reddeder.
 - Testler: 76/76.
 - Not: çelişki adayları şimdilik yalnızca ortak `affectsModules` ile seçilir; modülsüz kararlar karşılaştırılmaz. İleride başlık/anahtar kelime benzerliği eklenebilir (daha çok kapsam, ama daha fazla yanlış alarm ve token maliyeti; opt-in kalacak).
+
+## Faz 16 — MCP girişi bundle'a taşındı
+- Hook'lar `bundle/hook.mjs` kullanıyordu ama MCP kaydı `dist/cli/index.js`'e gidiyordu (node_modules ve derleme gerektirir; `dist` repoda commit'li değil). Tutarsızdı; bundle'a alındı: `bundle/agentrunlog.mjs` tek dosya, bağımlılıksız. Bundle yoksa `dist`'e düşer; enjekte edilen `cliEntry` her zaman önceliklidir.
+- Doctor: CLI Runtime ve MCP el sıkışması aynı girişi kullanır; proje `.mcp.json`'ında çözülmemiş `${VAR}` varsa Claude MCP "kurulu" sayılmaz (önceden yanıltıcı ✅ veriyordu).
+- Ders: doctor'ın ✅'si ile Claude'un gerçekten MCP'yi yüklemesi aynı şey değil; kayıt `~/.claude.json`'da yoktu.
+- Testler: 77/77.
