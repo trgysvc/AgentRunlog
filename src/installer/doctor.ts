@@ -189,7 +189,7 @@ export class SystemDoctor {
 
       child.stdout.on('data', (chunk) => {
         stdout += chunk.toString();
-        if (stdout.includes('"id":2') && stdout.includes('search_runlog') && stdout.includes('record_decision')) {
+        if (stdout.includes('"id":2') && stdout.includes('search_runlog') && stdout.includes('record_decision') && stdout.includes('review_decision_conflict')) {
           clearTimeout(timer);
           try {
             child.kill();
@@ -197,7 +197,7 @@ export class SystemDoctor {
           resolvePromise({
             component: 'Live MCP Server Handshake',
             ok: true,
-            details: 'Responded over stdio with all 8 tools (read + live write)',
+            details: 'Responded over stdio with all 9 tools (read + live write + opt-in conflict review)',
           });
         }
       });
