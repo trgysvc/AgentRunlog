@@ -77,7 +77,11 @@ export class SystemDoctor {
         claudeMcpOk = Boolean(cj?.mcpServers?.agentrunlog || cj?.projects?.[process.cwd()]?.mcpServers?.agentrunlog);
       }
       const projMcp = join(process.cwd(), '.mcp.json');
-      if (!claudeMcpOk && existsSync(projMcp)) claudeMcpOk = Boolean(JSON.parse(readFileSync(projMcp, 'utf8'))?.mcpServers?.agentrunlog);
+      if (!claudeMcpOk && existsSync(projMcp)) {
+        // A project .mcp.json only counts when it has no unresolved ${VAR}: Claude may not start such a server.
+        const entry = JSON.parse(readFileSync(projMcp, 'utf8'))?.mcpServers?.agentrunlog;
+        claudeMcpOk = Boolean(entry) && !JSON.stringify(entry).includes('${');
+      }
       if (existsSync(claudeSettingsPath)) {
         const cs = JSON.parse(readFileSync(claudeSettingsPath, 'utf8'));
         claudeHooksOk = Boolean(cs?.hooks?.SessionStart && cs?.hooks?.SessionEnd);
