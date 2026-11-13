@@ -21,6 +21,12 @@ export function normalizeToolPayload(p: Record<string, any>): Record<string, any
     else if (resp.is_error === true || p.is_error === true) out.error = String(resp.stderr || resp.content || resp.stdout || 'Tool reported an error').slice(0, 500);
     else if (typeof resp.stderr === 'string' && resp.stderr && out.exitCode !== undefined && out.exitCode !== 0) out.error = resp.stderr.slice(0, 500);
   }
+  // Older history imports stored a placeholder instead of the command text; treat it as unknown.
+  if (out.command === 'terminal_command') {
+    out.tool = out.tool ?? 'terminal_command';
+    out.command = undefined;
+    out.unknownCommand = true;
+  }
   return out;
 }
 

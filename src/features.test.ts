@@ -260,3 +260,11 @@ describe('duplicate hooks and unknown-command imports', () => {
     expect(readFileSync(join(root, 'raw', f), 'utf8').trim().split('\n')).toHaveLength(1);
   });
 });
+
+describe('legacy imported placeholder command', () => {
+  it('old raw imports with command "terminal_command" create no dead end or open work', async () => {
+    const { heuristicExtract } = await import('./compiler/heuristic.js');
+    const mk = (i: number) => ({ sessionId: 'import_antigravity_x', platform: 'antigravity', timestamp: `2026-01-01T00:00:0${i}Z`, eventType: 'post_tool_use', payload: { command: 'terminal_command', exitCode: 1, error: 'Command exited with code 1\nboom' } }) as any;
+    expect(heuristicExtract([mk(1), mk(2), mk(3)]).deadEnds).toHaveLength(0);
+  });
+});
