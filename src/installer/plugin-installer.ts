@@ -65,6 +65,7 @@ export class UniversalPluginInstaller {
   private home: string;
   private pkgRoot: string;
   private nodeExec: string;
+  private explicitCli = false;
   private cliEntry: string;
 
   constructor(options: InstallerOptions = {}) {
@@ -72,11 +73,18 @@ export class UniversalPluginInstaller {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     this.pkgRoot = options.pkgRoot || findPackageRoot(__dirname);
     this.nodeExec = options.nodeExec || process.execPath;
+    this.explicitCli = Boolean(options.cliEntry);
     this.cliEntry = options.cliEntry || resolve(this.pkgRoot, 'dist/cli/index.js');
   }
 
+  /** Light hook bundle when available (NFR-05); an explicitly injected cliEntry is always honoured. */
+  private hookEntry(): string {
+    const light = resolve(this.pkgRoot, 'bundle/hook.mjs');
+    return this.explicitCli || !existsSync(light) ? this.cliEntry : light;
+  }
+
   private getHookCommand(platform: string, event: string): string {
-    return `"${this.nodeExec}" "${this.cliEntry}" hook ${platform} ${event}`;
+    return `"${this.nodeExec}" "${this.hookEntry()}" hook ${platform} ${event}`;
   }
 
   /**
@@ -143,7 +151,7 @@ export class UniversalPluginInstaller {
     writeFileSync(
       hooksPath,
       JSON.stringify(
-        antigravityHookGroup(`"${this.nodeExec}" "${this.cliEntry}"`),
+        antigravityHookGroup(`"${this.nodeExec}" "${this.hookEntry()}"`),
         null,
         2
       ),

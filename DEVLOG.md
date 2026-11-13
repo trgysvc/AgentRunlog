@@ -363,3 +363,7 @@
 - NFR-05 p95: hook paketi 9KB; kalan fark Node başlangıcı (22ms) — kod tarafında kazanç yok, sapma olarak kalır.
 - `init claude` artık proje `.mcp.json` yazar ve `enabledMcpjsonServers` ile önceden onaylar (taze projede MCP yoktu; gerçek Claude testinde bulundu).
 - Gerçek Claude testleri: --resume (aynı oturuma eklenir), 3 eşzamanlı oturum (bozulma yok), /compact (pre_compact yakalandı), alt ajan, redaksiyon (password=...), MCP record_decision/get_active_context.
+- Global `setup` artık hook'larda hafif `bundle/hook.mjs` kullanır (önceden ağır dist/cli). Sahte HOME ile doğrulandı.
+- `runlog report`: etki raporu (oturum, enjeksiyon, kayıt sayıları, tekrarlayan hatalar, lint).
+- Gecikme: `--no-experimental-fetch` denendi ama Node 24'te bayrak kaldırılmış (hata verip hemen çıkıyordu, sahte 13ms ölçümü); geri alındı. Boş Node dosyası bile ~20ms; CJS paketi yalnızca ~4ms kazandırıyor. p95 hedefi Node ile ulaşılamaz.
+- Gerçek Claude: 27 turluk --resume oturumu, hiçbir olay kaybolmadı (27 prompt/27 yanıt/27 session_start). Not: `-p` her çağrıda SessionEnd tetiklediğinden 25-tur eşiği gerçek oturumda ayrıca izole edilemedi; eşik simüle hook testleriyle doğrulı.

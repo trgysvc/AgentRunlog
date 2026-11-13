@@ -2,6 +2,7 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StorageManager } from '../storage/index.js';
+import { buildImpactReport } from '../compiler/report.js';
 import { WikiLinter } from '../compiler/linter.js';
 import { WikiReindexer } from '../compiler/reindex.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
@@ -38,6 +39,7 @@ Usage:
   runlog status               Display memory statistics and active context cache size
   runlog pause | resume       Stop / resume recording in this project (NFR-03 opt-out)
   runlog usage                Show how much disk space AgentRunlog uses (per folder)
+  runlog report               Impact report: sessions, injections, records, repeated failures
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
   runlog mcp                  Start Model Context Protocol (MCP) server over stdio
@@ -399,6 +401,21 @@ Usage:
       console.log(`  Active Context Tokens:  ~${activeContext?.estimatedTokens || 0} / 800 limit`);
       console.log(`  Last Cache Update:      ${activeContext?.lastUpdated || 'Never'}`);
       console.log(`───────────────────────────────────────────`);
+      break;
+    }
+
+    case 'report': {
+      const r = buildImpactReport(storage);
+      console.log('📈 AgentRunlog Impact Report');
+      console.log(`  Sessions recorded:   ${r.sessions} (${Object.entries(r.platforms).map(([k, v]) => `${k}: ${v}`).join(', ') || '-'})`);
+      console.log(`  Context injections:  ${r.injections}`);
+      console.log(`  Decisions:           ${r.activeDecisions} active / ${r.draftDecisions} draft / ${r.supersededDecisions} superseded`);
+      console.log(`  RCAs / Dead ends / Runs: ${r.rcas} / ${r.deadEnds} / ${r.runs}`);
+      console.log(`  Lint:                ${r.lintErrors} errors, ${r.lintWarnings} warnings`);
+      if (r.repeatedFailures.length) {
+        console.log('  Repeated failures (same command failed in several sessions):');
+        for (const f of r.repeatedFailures) console.log(`    - ${f.command}  (${f.sessions} sessions)`);
+      }
       break;
     }
 

@@ -62,3 +62,21 @@ describe('NFR-03: opt-out and exclusion patterns', () => {
     expect(existsSync(rawFile(root))).toBe(false);
   });
 });
+
+import { buildImpactReport } from './compiler/report.js';
+describe('impact report', () => {
+  it('counts sessions, injections and repeated failures', () => {
+    const dir = tmp();
+    const st = new StorageManager(dir);
+    mkdirSync(st.paths.raw, { recursive: true });
+    const ev = (t: string, p: any = {}) => JSON.stringify({ sessionId: 'x', platform: 'claude_code', eventType: t, timestamp: 'now', payload: p }) + '\n';
+    for (const s of ['a', 'b']) {
+      writeFileSync(join(st.paths.raw, `session-${s}.jsonl`), ev('session_start') + ev('post_tool_use', { error: 'boom', tool_input: { command: 'make x' } }));
+    }
+    const r = buildImpactReport(st);
+    expect(r.sessions).toBe(2);
+    expect(r.injections).toBe(2);
+    expect(r.repeatedFailures[0]).toEqual({ command: 'make x', sessions: 2 });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
