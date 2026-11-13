@@ -206,6 +206,7 @@ export class UniversalPluginInstaller {
       SessionStart: this.getHookCommand('claude', 'session-start'),
       UserPromptSubmit: this.getHookCommand('claude', 'prompt-submit'),
       PostToolUse: this.getHookCommand('claude', 'post-tool-use'),
+      PostToolUseFailure: this.getHookCommand('claude', 'post-tool-use-failure'),
       PreCompact: this.getHookCommand('claude', 'pre-compact'),
       SessionEnd: this.getHookCommand('claude', 'session-end'),
     };

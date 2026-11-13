@@ -336,3 +336,6 @@
 - **Takılma önlemi:** `mcp` dışındaki CLI komutları bitince açıkça çıkar; `sync-history`/`bootstrap`/`compile` için 15 dk'lık gözcü zamanlayıcı.
 - **Eşzamanlı oturumlar ve yaşam döngüsü:** iki oturumdan 40 paralel hook (300KB'lık yükler dahil) olay kaybetmeden/bozmadan yazılır; `pre-compact` ve `session-end` arka planda derleyip oturum sayfasını üretir (test eklendi, 55/55).
 - **Açık kalan:** gerçek Antigravity oturumu ve `SessionStart` çıktı şekli.
+
+### Faz 13 ek: Gerçek Claude testi tekrarı
+- Gerçek `claude -p` oturumunda başarısız Bash komutu kaydedilmedi: Claude Code başarısız araç çağrıları için `PostToolUse` değil `PostToolUseFailure` gönderiyor. Hook `post-tool-use-failure` olarak eklendi (`claude-code.ts`, installer, `hooks/hooks.json`); `post_tool_use` olarak eşlenir, oturum yolunda ❌ görünür. Yeniden testte olay `error: Exit code 1…` ile kaydedildi. 56/56 test.

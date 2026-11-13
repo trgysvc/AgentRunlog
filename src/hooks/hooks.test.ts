@@ -268,3 +268,16 @@ describe('Concurrent sessions and lifecycle events (real hook bundle)', () => {
     expect(existsSync(join(wiki, 'sessA.md'))).toBe(true);
   }, 60000);
 });
+
+describe('Failed tool calls (Claude PostToolUseFailure)', () => {
+  it('maps post-tool-use-failure to post_tool_use and the journey records it as a failed command', async () => {
+    const { mapEvent } = await import('./light.js');
+    expect(mapEvent('post-tool-use-failure')).toBe('post_tool_use');
+    const { buildSessionJourney } = await import('../compiler/journey.js');
+    const md = buildSessionJourney([
+      { sessionId: 's', platform: 'claude_code', eventType: 'post_tool_use', timestamp: '2026-01-01T00:00:00Z', payload: { tool_name: 'Bash', tool_input: { command: 'ls /nope' }, error: 'Exit code 2\nls: /nope: No such file or directory' } },
+    ] as any);
+    expect(md).toMatch(/failed|✗/i);
+    expect(md).toContain('ls /nope');
+  });
+});

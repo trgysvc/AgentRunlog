@@ -10,6 +10,9 @@
     "PostToolUse": [
       { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bundle/hook.mjs\" claude post-tool-use" } ] }
     ],
+    "PostToolUseFailure": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bundle/hook.mjs\" claude post-tool-use-failure" } ] }
+    ],
     "PreCompact": [
       { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bundle/hook.mjs\" claude pre-compact" } ] }
     ],

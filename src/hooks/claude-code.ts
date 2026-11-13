@@ -23,6 +23,7 @@ export class ClaudeCodeHookAdapter {
       UserPromptSubmit: `${cli} hook claude prompt-submit`,
       PreToolUse: `${cli} hook claude pre-tool-use`,
       PostToolUse: `${cli} hook claude post-tool-use`,
+      PostToolUseFailure: `${cli} hook claude post-tool-use-failure`,
       SessionEnd: `${cli} hook claude session-end`,
       PreCompact: `${cli} hook claude pre-compact`,
     };
