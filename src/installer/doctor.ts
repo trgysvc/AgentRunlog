@@ -74,19 +74,30 @@ export class SystemDoctor {
     try {
       if (existsSync(claudeJsonPath)) {
         const cj = JSON.parse(readFileSync(claudeJsonPath, 'utf8'));
-        claudeMcpOk = Boolean(cj?.mcpServers?.agentrunlog);
+        claudeMcpOk = Boolean(cj?.mcpServers?.agentrunlog || cj?.projects?.[process.cwd()]?.mcpServers?.agentrunlog);
       }
+      const projMcp = join(process.cwd(), '.mcp.json');
+      if (!claudeMcpOk && existsSync(projMcp)) claudeMcpOk = Boolean(JSON.parse(readFileSync(projMcp, 'utf8'))?.mcpServers?.agentrunlog);
       if (existsSync(claudeSettingsPath)) {
         const cs = JSON.parse(readFileSync(claudeSettingsPath, 'utf8'));
         claudeHooksOk = Boolean(cs?.hooks?.SessionStart && cs?.hooks?.SessionEnd);
       }
     } catch {}
-    const claudeOk = claudeMcpOk && claudeHooksOk && existsSync(claudeSkillPath);
+    // Project-level setup (`runlog init claude`) counts as configured for this project
+    let claudeProjectHooks = false;
+    try {
+      const pp = join(process.cwd(), '.claude', 'settings.json');
+      if (existsSync(pp)) {
+        const ps = JSON.parse(readFileSync(pp, 'utf8'));
+        claudeProjectHooks = Boolean(ps?.hooks?.SessionStart && ps?.hooks?.SessionEnd);
+      }
+    } catch {}
+    const claudeOk = claudeMcpOk && (claudeHooksOk || claudeProjectHooks) && (existsSync(claudeSkillPath) || claudeProjectHooks);
     checks.push({
       component: 'Claude Code Plugin',
       ok: claudeOk,
       details: claudeOk
-        ? 'MCP (~/.claude.json), Hooks (~/.claude/settings.json), and Skill configured'
+        ? claudeProjectHooks && !claudeHooksOk ? 'MCP and project-level hooks (.claude/settings.json) configured' : 'MCP (~/.claude.json), Hooks (~/.claude/settings.json), and Skill configured'
         : 'Incomplete Claude Code configuration. Run: runlog setup',
     });
 

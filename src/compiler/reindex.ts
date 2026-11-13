@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, rmSync, mkdirSync, cpSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { type StorageManager } from '../storage/index.js';
 import { TranscriptExtractor, type CompilerOptions } from './extractor.js';
@@ -52,6 +52,26 @@ export class WikiReindexer {
       deadEnds: wiki.listDeadEnds().filter(isOrphan),
       tasks: wiki.listTasks().filter(isOrphan),
     };
+
+    // 2b. Replay the MCP journal (raw/mcp-records.jsonl): explicit records survive a lost wiki (NFR-10)
+    const journalFile = join(paths.raw, 'mcp-records.jsonl');
+    if (existsSync(journalFile)) {
+      const has = new Set([
+        ...keep.decisions.map((r) => r.id), ...keep.rcas.map((r) => r.id), ...keep.deadEnds.map((r) => r.id),
+        ...wiki.listDecisions().map((r) => r.id), ...wiki.listRCAs().map((r) => r.id), ...wiki.listDeadEnds().map((r) => r.id),
+      ]);
+      for (const line of readFileSync(journalFile, 'utf8').split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const { kind, record } = JSON.parse(line);
+          if (!record?.id || has.has(record.id)) continue;
+          has.add(record.id);
+          if (kind === 'decision') keep.decisions.push(record);
+          else if (kind === 'rca') keep.rcas.push(record);
+          else if (kind === 'dead_end') keep.deadEnds.push(record);
+        } catch {}
+      }
+    }
 
     // 3. Back up, then clean
     let backupDir: string | null = null;

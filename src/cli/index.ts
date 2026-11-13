@@ -13,7 +13,7 @@ import { HookManager } from '../hooks/index.js';
 import { formatHookOutput } from '../hooks/light.js';
 import { createRunlogMcpServer } from '../mcp/server.js';
 import { UniversalPluginInstaller, SystemDoctor } from '../installer/index.js';
-import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, appendFileSync, readdirSync, writeFileSync, statSync, mkdirSync, rmSync } from 'node:fs';
 import { formatBytes, storageUsage } from '../storage/usage.js';
 import { acquireLock } from '../storage/lock.js';
 import { join } from 'node:path';
@@ -36,6 +36,7 @@ Usage:
                               (--force re-imports every conversation, ignoring the unchanged-file cache)
   runlog compile [session]    Extract typed knowledge from session transcripts using compiler
   runlog status               Display memory statistics and active context cache size
+  runlog pause | resume       Stop / resume recording in this project (NFR-03 opt-out)
   runlog usage                Show how much disk space AgentRunlog uses (per folder)
   runlog lint                 Audit wiki for broken supersedes, stale references, and invalid records
   runlog reindex              Rebuild wiki and cache from raw transcripts (NFR-10)
@@ -130,6 +131,16 @@ Usage:
       }
     }
     return;
+  }
+
+  if (command === 'pause' || command === 'resume') {
+    const st = new StorageManager();
+    const flag = join(st.paths.cache, 'paused');
+    mkdirSync(st.paths.cache, { recursive: true });
+    if (command === 'pause') writeFileSync(flag, new Date().toISOString());
+    else rmSync(flag, { force: true });
+    console.log(command === 'pause' ? '⏸  Recording paused: hooks capture nothing until `runlog resume`.' : '▶️  Recording resumed.');
+    process.exit(0);
   }
 
   if (command === 'usage') {

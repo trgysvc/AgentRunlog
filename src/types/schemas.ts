@@ -167,6 +167,13 @@ export const RunlogConfigSchema = z.object({
       uncompiledTurnsThreshold: z.number().default(25), // NFR-06 batching threshold
     })
     .default({ uncompiledTurnsThreshold: 25 }),
+  // NFR-03: opt-out and exclusion patterns
+  privacy: z
+    .object({
+      enabled: z.boolean().default(true), // false = nothing is recorded in this project
+      excludePatterns: z.array(z.string()).default([]), // globs: events touching matching paths/commands are never recorded
+    })
+    .default({ enabled: true, excludePatterns: [] }),
 });
 export type RunlogConfig = z.infer<typeof RunlogConfigSchema>;
 

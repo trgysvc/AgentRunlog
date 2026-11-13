@@ -354,3 +354,10 @@
 - Güvenlik açığı düzeltildi: tırnaksız `password=değer` redakte edilmiyordu (ENV_SECRET deseni ön ek zorunluydu). Test eklendi.
 - Denetim sonuçları: hook gecikmesi p95 ≈ 34ms (hedef 20ms; Node başlangıcı tek başına 22ms), p99 ≈ 35ms (hedef 50ms geçer).
 - Bilinen sapma: wiki tamamen silinirse yalnızca MCP ile yazılmış kayıtlar raw'dan türetilemez (reindex yalnızca hook olaylarını yeniden kurar).
+
+## Faz 13 — ek 4 (sapmaların kapatılması)
+- NFR-10: MCP kayıtları `raw/mcp-records.jsonl` günlüğüne de yazılır; `reindex` wiki silinmiş olsa bile bunları geri yükler.
+- FR-05: `record_dead_end` geçici (503/timeout) ve basit sözdizimi hatalarını reddeder.
+- NFR-03: `config.privacy.enabled` / `excludePatterns` (glob) ve `runlog pause|resume` ile kayıt kapatma/hariç tutma.
+- Doctor: proje seviyesindeki Claude kurulumunu (`.claude/settings.json`, `.mcp.json`) da tanır.
+- NFR-05 p95: hook paketi 9KB; kalan fark Node başlangıcı (22ms) — kod tarafında kazanç yok, sapma olarak kalır.

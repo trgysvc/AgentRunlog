@@ -1,9 +1,10 @@
-import { existsSync } from 'node:fs';
+import { existsSync, appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { StorageManager } from '../storage/index.js';
 import { TranscriptExtractor } from '../compiler/extractor.js';
 import { defaultSanitizer } from '../sanitizer/index.js';
 import { ensureProjectBootstrapped, isValidProjectDirectory } from '../compiler/auto-bootstrap.js';
+import { isNonStructuralFailure } from '../compiler/evidence.js';
 import { type Decision, type RCA, type DeadEnd } from '../types/schemas.js';
 
 export interface SearchRunlogParams {
@@ -341,6 +342,7 @@ export class RunlogMcpTools {
     };
 
     storage.wiki.saveDecision(decision);
+    this.journal(storage, 'decision', decision);
     storage.wiki.generateIndexAndModules();
     this.refreshCacheFromWiki(storage);
     return decision;
@@ -360,6 +362,10 @@ export class RunlogMcpTools {
     projectRoot?: string;
   }): DeadEnd {
     params = defaultSanitizer.redactObject(params); // NFR-01: MCP inputs are secrets-prone too
+    if (isNonStructuralFailure(params.whyFailed)) {
+      // FR-05: transient (503/timeout) and plain syntax/typo failures are not dead ends
+      throw new Error('Not a dead end: transient (network/timeout/5xx) or plain syntax/typo failures are not recorded (FR-05). Record only structural failures.');
+    }
     const storage = this.getStorage(params.projectRoot);
     const existing = storage.wiki.listDeadEnds();
     const id = nextRecordId('DEAD', existing.map((r) => r.id));
@@ -382,6 +388,7 @@ export class RunlogMcpTools {
     };
 
     storage.wiki.saveDeadEnd(deadEnd);
+    this.journal(storage, 'dead_end', deadEnd);
     storage.wiki.generateIndexAndModules();
     this.refreshCacheFromWiki(storage);
     return deadEnd;
@@ -423,9 +430,18 @@ export class RunlogMcpTools {
     };
 
     storage.wiki.saveRCA(rca);
+    this.journal(storage, 'rca', rca);
     storage.wiki.generateIndexAndModules();
     this.refreshCacheFromWiki(storage);
     return rca;
+  }
+
+  /** Append-only journal so explicit records can be rebuilt by `reindex` even if the wiki is lost (NFR-10). */
+  private journal(storage: StorageManager, kind: string, record: unknown): void {
+    try {
+      mkdirSync(storage.paths.raw, { recursive: true });
+      appendFileSync(join(storage.paths.raw, 'mcp-records.jsonl'), JSON.stringify({ kind, record }) + '\n');
+    } catch {}
   }
 
   private refreshCacheFromWiki(storage: StorageManager): void {

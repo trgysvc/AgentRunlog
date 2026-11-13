@@ -103,6 +103,28 @@ function bumpPending(cacheDir: string, by: number): number {
   return next;
 }
 
+function globToRegExp(glob: string): RegExp {
+  const esc = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*').replace(/\?/g, '.');
+  return new RegExp(esc);
+}
+
+/** NFR-03: true when any string in the payload's tool input/path fields matches an exclusion glob. */
+function matchesExclusion(payload: Record<string, unknown>, patterns: string[]): boolean {
+  if (!patterns.length) return false;
+  const strings: string[] = [];
+  const collect = (v: unknown, depth = 0) => {
+    if (typeof v === 'string') strings.push(v);
+    else if (depth < 3 && v && typeof v === 'object') for (const x of Object.values(v as object)) collect(x, depth + 1);
+  };
+  collect(payload.tool_input);
+  collect(payload.toolInput);
+  collect(payload.file_path);
+  collect(payload.path);
+  collect(payload.command);
+  const res = patterns.map(globToRegExp);
+  return strings.some((str) => res.some((r) => r.test(str)));
+}
+
 export function runLightHook(input: LightHookInput): string | null {
   const env = input.env ?? process.env;
   if (env.AGENTRUNLOG_INTERNAL === '1' || env.AGENTRUNLOG_SKIP === '1') return null;
@@ -116,12 +138,17 @@ export function runLightHook(input: LightHookInput): string | null {
   const cacheDir = join(input.storageRoot, 'cache');
   const payload = input.payload;
 
+  // NFR-03: per-project opt-out (`runlog pause`, config.privacy.enabled=false) and exclusion patterns
+  const cfg = readJson(join(input.storageRoot, 'config.json'));
+  const optedOut = existsSync(join(cacheDir, 'paused')) || cfg?.privacy?.enabled === false;
+  const excluded = !optedOut && matchesExclusion(payload, Array.isArray(cfg?.privacy?.excludePatterns) ? cfg.privacy.excludePatterns : []);
+
   // 1. Capture the event. Without a session id we refuse to guess a "daily" session for junk input.
   const idFromPayload = payload.conversationId ?? payload.conversation_id ?? payload.session_id ?? payload.sessionId;
   let sessionId = input.sessionId || (idFromPayload ? String(idFromPayload) : '');
   if (!sessionId && input.payloadParsed) sessionId = `sess_${new Date().toISOString().slice(0, 10)}`;
 
-  if (mapped && sessionId) {
+  if (mapped && sessionId && !optedOut && !excluded) {
     try {
       mkdirSync(rawDir, { recursive: true });
       mkdirSync(cacheDir, { recursive: true });
